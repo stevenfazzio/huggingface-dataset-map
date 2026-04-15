@@ -1,0 +1,113 @@
+{
+  "_comment": "Proposed round-2 schema. EDIT THIS FILE BY HAND. The round-2 extraction script will consume whatever categories live here. Each category has: name (slug used in output), description (shown to the LLM), examples (optional, for prompt context and human review).",
+
+  "provenance_method": {
+    "_note": "Hand-built, not clustered. Round-1 embeddings mixed creation methods with narrative surface form, so we define this top-down. Single-select: the LLM must pick ONE primary method. If the card genuinely mixes methods (e.g. LLM-generated + human-verified), pick the more load-bearing one and note it in provenance_notes.",
+    "type": "single-select",
+    "categories": [
+      {
+        "name": "human-created",
+        "description": "Primary-source content written, recorded, or annotated by humans. Includes crowdsourced labels, expert annotations, human-written prompts/responses, and speaker recordings where humans are the source of the content."
+      },
+      {
+        "name": "web-scraped",
+        "description": "Harvested from public web sources (websites, social platforms, APIs). The distinguishing feature is that a crawler/scraper collected content that already existed on the web, without re-authoring it."
+      },
+      {
+        "name": "sensor-recorded",
+        "description": "Captured from physical instruments or environments: robot trajectories, sensor streams, microphone recordings of natural sound, camera captures of real-world phenomena. Distinct from human-created (which implies humans as the content source) and web-scraped (which implies pre-existing web data)."
+      },
+      {
+        "name": "llm-generated",
+        "description": "Content produced by an LLM or generative model, including synthetic instructions, synthetic preferences, distilled outputs, and model-written explanations. Include cases where a model generated the data even if humans later filtered it."
+      },
+      {
+        "name": "translated",
+        "description": "Primarily a translation of another dataset from one language to another. The content structure carries over; only the language changes. Include both machine-translated (DeepL, GPT-4) and human-translated datasets."
+      },
+      {
+        "name": "filtered-subset",
+        "description": "A selected, cleaned, or otherwise filtered subset of a single parent dataset. The content is unchanged; the curation is in what was kept or dropped."
+      },
+      {
+        "name": "remix",
+        "description": "Combined from multiple existing datasets. Typical of SFT mixtures and preference mixtures that aggregate several upstream corpora."
+      },
+      {
+        "name": "algorithmically-derived",
+        "description": "Computed from another dataset by a deterministic or algorithmic process (embeddings, tokenizations, automatic annotations via classical methods, rendered variations). Not primarily LLM-generated, not primarily a filter."
+      },
+      {
+        "name": "mixed",
+        "description": "Genuinely multi-method in a way that can't be reduced to a primary (e.g. human-written prompts paired with LLM-generated responses, or a scraped corpus with human annotations layered on). Use sparingly — prefer the dominant method when one exists."
+      },
+      {
+        "name": "other",
+        "description": "Card describes a method that doesn't fit any category above. Also use for unusual cases like procedurally-generated game data."
+      },
+      {
+        "name": "not_stated",
+        "description": "The card does not describe how the data was created. Use this when you genuinely can't tell, not as a fallback for ambiguous cases — prefer 'mixed' or 'other' when you have some signal."
+      }
+    ]
+  },
+
+  "subject_domain": {
+    "_note": "Derived from clustering + merging. Top-2 clusters (Multimodal Content Creation + AI Generated Media, 204 of 493) were blurry and got split differently here. Medical and Legal kept separate despite small size because they're clear and colorable. Singletons folded into 'other' or nearest fit.",
+    "type": "single-select",
+    "categories": [
+      {"name": "general-web-text", "description": "Open-domain web crawl, Wikipedia-style corpora, general-purpose text for pretraining. Not topically focused."},
+      {"name": "instruction-and-chat", "description": "Instruction-following data, assistant dialogues, preference pairs for chat alignment, roleplay. The content's PURPOSE is chat/instruction training, regardless of underlying topic."},
+      {"name": "code-and-software", "description": "Source code, code completions, code review, developer documentation, software engineering tasks."},
+      {"name": "math-and-reasoning", "description": "Math problems, formal reasoning, theorem proving, logical puzzles, chain-of-thought reasoning traces."},
+      {"name": "scientific-research", "description": "Academic papers, research abstracts, chemistry, physics, molecular/materials data, scientific literature."},
+      {"name": "medical-and-biomedical", "description": "Medical imaging, clinical notes, biomedical text, patient data, health records, pharmacology."},
+      {"name": "natural-images-and-video", "description": "Photographs, natural video, real-world visual content. Image classification, object detection, scene understanding datasets with non-synthetic sources."},
+      {"name": "generated-media", "description": "AI-generated images, synthetic video, AI-generated audio. Datasets whose content IS synthetic media (distinct from datasets ABOUT detection of synthetic media)."},
+      {"name": "speech-and-audio", "description": "Speech recordings, TTS training data, ASR corpora, music, environmental audio, audio classification."},
+      {"name": "legal-and-policy", "description": "Legal documents, case law, regulations, government policy, terms of service, compliance text."},
+      {"name": "finance-and-business", "description": "Financial reports, market data, trading, cryptocurrency, e-commerce records, business documents, real-estate listings."},
+      {"name": "safety-alignment", "description": "Safety training data, red-team prompts, jailbreak attempts, toxicity classification, adversarial evaluation."},
+      {"name": "robotics-and-embodied", "description": "Robot trajectories, manipulation data, embodied AI, humanoid control, sim-to-real."},
+      {"name": "3d-and-simulation", "description": "3D models, meshes, point clouds, physics simulations, synthetic environments."},
+      {"name": "agent-and-tool-use", "description": "Agentic trajectories, tool-calling demonstrations, multi-step task execution, function-calling."},
+      {"name": "entertainment-and-gaming", "description": "Video game data, sports, movies/TV, fiction, creative content consumption."},
+      {"name": "geospatial", "description": "Maps, satellite imagery, geographic data, remote sensing, GIS."},
+      {"name": "other", "description": "Subject matter that doesn't fit any category above. Prefer a specific category when possible."},
+      {"name": "not_stated", "description": "The card doesn't describe what the data is about in enough detail to categorize."}
+    ]
+  },
+
+  "training_stage": {
+    "_note": "Round 1 showed this is near-enum (6 real values). Round 1 also showed the model wants to return combos like 'pretraining / domain-finetune' for datasets that genuinely serve multiple stages. Policy: MULTI-SELECT, return a list. Most cards will be single-item; dual-use cards (e.g. 'can be used for SFT or eval') get both.",
+    "type": "multi-select",
+    "categories": [
+      {"name": "pretraining", "description": "Large unlabeled or weakly-labeled corpus for pretraining a base model."},
+      {"name": "sft", "description": "Supervised fine-tuning data: instruction-response pairs or task-specific labeled examples."},
+      {"name": "preference", "description": "Preference pairs, DPO/RLHF training data, reward modeling data."},
+      {"name": "eval", "description": "Benchmark or evaluation dataset. Intended for measuring models, not training them. (is_benchmark should be true for these.)"},
+      {"name": "domain-finetune", "description": "Fine-tuning data for domain adaptation (legal LLM, medical LLM, code LLM). Distinct from general SFT."},
+      {"name": "raw-corpus", "description": "Raw collected data (scrape, recordings) not yet packaged for a specific training stage. Downstream users decide what to do with it."},
+      {"name": "other", "description": "Some other training-adjacent use (e.g. reward-model training data that's distinct from preference pairs)."},
+      {"name": "not_stated", "description": "The card doesn't describe intended training use."}
+    ]
+  },
+
+  "geo_scope": {
+    "_note": "Round 1 had 290 'global' / 84 'not_applicable' / 44 'not_stated' plus a real long tail of countries. The model overused 'global' when silent. Round 2: force 'not_stated' unless the card is explicit.",
+    "type": "single-select-or-list",
+    "rule": "Return a list of country/region names if the card is explicit. Return ['global'] ONLY if the card explicitly says the content is worldwide/international in scope. Return ['not_applicable'] for content that has no meaningful geography (math, code, generic text, generated media, abstract tasks). Return ['not_stated'] if the card is silent — this is the default, not 'global'."
+  },
+
+  "upstream_models": {
+    "_note": "Worked fine in round 1 as open-ended list. Keep open-ended in round 2 — the value is the raw model names, not a taxonomy. Canonicalize post-hoc if needed.",
+    "type": "open-list",
+    "rule": "Return a list of model names explicitly mentioned in the card as having generated or been distilled into this data (e.g. 'GPT-4', 'Claude 3.5 Sonnet', 'Llama-3.1-70B'). Return ['not_applicable'] if the card doesn't involve model-generated content. Return ['not_stated'] if the card describes model generation but doesn't name the models."
+  },
+
+  "is_benchmark": {
+    "_note": "Worked cleanly in round 1 (313/185 split, no edge cases). Keep as boolean.",
+    "type": "boolean",
+    "rule": "true if the dataset is explicitly intended as an evaluation benchmark (held-out test, leaderboard, eval suite). false for training corpora even if they could be used for eval."
+  }
+}

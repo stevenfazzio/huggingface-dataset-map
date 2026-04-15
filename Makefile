@@ -17,7 +17,8 @@ pipeline:
 	uv run python pipeline/01_embed_cards.py
 	uv run python pipeline/02_reduce_umap.py
 	uv run python pipeline/03_label_topics.py
-	uv run python pipeline/04_visualize.py
+	uv run python pipeline/04_extract_structured.py
+	uv run python pipeline/05_visualize.py
 
 clean:
 	@echo "This will remove all files in data/. Press Ctrl+C to cancel."

@@ -1,5 +1,6 @@
 """Render an interactive DataMapPlot HTML map of HuggingFace datasets."""
 
+import json
 import math
 import re
 from html import escape
@@ -14,6 +15,7 @@ from config import (
     EMBEDDINGS_NPZ,
     LABELS_PARQUET,
     MAP_HTML,
+    STRUCTURED_FIELDS_PARQUET,
     UMAP_COORDS_NPZ,
 )
 from matplotlib import colormaps as mpl_colormaps
@@ -191,17 +193,60 @@ def _esc(values) -> list[str]:
     return [escape(str(v)) for v in values]
 
 
+def _maybe_json_list(v) -> list:
+    """Parse a JSON list stored as a string in the parquet, or pass through a real list."""
+    if isinstance(v, list):
+        return v
+    if isinstance(v, str) and v.startswith("["):
+        try:
+            out = json.loads(v)
+            return out if isinstance(out, list) else []
+        except Exception:
+            return []
+    return []
+
+
+def _primary_stage(raw, allowed: set[str]) -> str:
+    """Pick a single training-stage label per row with a priority order. Invalid slugs coerce to 'other'."""
+    items = [v for v in _maybe_json_list(raw) if v in allowed]
+    priority = ["preference", "sft", "eval", "domain-finetune", "pretraining", "raw-corpus", "other", "not_stated"]
+    for p in priority:
+        if p in items:
+            return p
+    return items[0] if items else "other"
+
+
+def _slug_or(raw, allowed: set[str], fallback: str = "not_stated") -> str:
+    """Pass-through if the value is in the allowed enum; else fall back (default 'not_stated')."""
+    if isinstance(raw, str) and raw in allowed:
+        return raw
+    return fallback
+
+
+def _load_allowed_slugs() -> dict[str, set[str]]:
+    from config import TAXONOMY_JSON
+
+    tax = json.loads(TAXONOMY_JSON.read_text())
+    return {
+        f: {c["name"] for c in spec.get("categories", [])}
+        for f, spec in tax.items()
+        if not f.startswith("_") and "categories" in spec
+    }
+
+
 HOVER_TEMPLATE = (
-    "<div style=\"font-family:'IBM Plex Sans',sans-serif;max-width:360px;padding:6px 2px;\">"
+    "<div style=\"font-family:'IBM Plex Sans',sans-serif;max-width:380px;padding:6px 2px;\">"
     '<div style="font-weight:600;font-size:13px;color:#1f2328;margin-bottom:4px;">{repo_id}</div>'
     '<div style="font-size:11.5px;color:#57606a;margin-bottom:6px;">♥ {likes} &nbsp;·&nbsp; ↓ {downloads}</div>'
     '<div style="font-size:11.5px;color:#3d4752;line-height:1.45;">'
-    "<div><b>task:</b> {task}</div>"
-    "<div><b>modality:</b> {modality}</div>"
-    "<div><b>language:</b> {language}</div>"
-    "<div><b>size:</b> {size}</div>"
-    "<div><b>license:</b> {license}</div>"
-    "<div><b>updated:</b> {updated}</div>"
+    "<div><b>task:</b> {task} &nbsp;·&nbsp; <b>modality:</b> {modality}</div>"
+    "<div><b>language:</b> {language} &nbsp;·&nbsp; <b>size:</b> {size}</div>"
+    "<div><b>license:</b> {license} &nbsp;·&nbsp; <b>updated:</b> {updated}</div>"
+    '<div style="margin-top:4px;border-top:1px solid #eaeef2;padding-top:4px;">'
+    "<div><b>subject:</b> {subject} &nbsp;·&nbsp; <b>stage:</b> {stage}</div>"
+    "<div><b>provenance:</b> {provenance} &nbsp;·&nbsp; <b>format:</b> {format}</div>"
+    "<div><b>benchmark:</b> {benchmark}</div>"
+    "</div>"
     "</div>"
     "</div>"
 )
@@ -212,8 +257,18 @@ def main():
     coords = np.load(UMAP_COORDS_NPZ)["coords"]
     _ = np.load(EMBEDDINGS_NPZ)["embeddings"]  # reserved for future edge bundling
     labels = pd.read_parquet(LABELS_PARQUET)
+    structured = pd.read_parquet(STRUCTURED_FIELDS_PARQUET)
 
     df = df.merge(labels, on="repo_id", how="left")
+    structured_cols = [
+        "repo_id",
+        "provenance_method",
+        "subject_domain",
+        "training_stage",
+        "format_convention",
+        "is_benchmark",
+    ]
+    df = df.merge(structured[structured_cols], on="repo_id", how="left")
 
     label_cols = sorted(c for c in df.columns if c.startswith("label_layer_"))
     label_layers = [df[c].fillna("Unlabeled").astype(str).values for c in label_cols]
@@ -234,6 +289,35 @@ def main():
     sizes = sizes_full  # already ordinal, no bucketing
     langs = _top_n_plus_other(langs_full)
 
+    # LLM-extracted structured fields. Coerce invalid slugs to 'other' so validation
+    # leakage (~3% of rows have out-of-enum values from cross-field bleed) doesn't
+    # produce phantom legend entries. Truth is preserved in the parquet.
+    allowed = _load_allowed_slugs()
+    subject_full = np.array(
+        [_prettify(_slug_or(v, allowed["subject_domain"], "other")) for v in df["subject_domain"].values]
+    )
+    provenance_full = np.array(
+        [_prettify(_slug_or(v, allowed["provenance_method"], "other")) for v in df["provenance_method"].values]
+    )
+    stage_full = np.array(
+        [_prettify(_primary_stage(v, allowed["training_stage"])) for v in df["training_stage"].values]
+    )
+    format_full = np.array(
+        [_prettify(_slug_or(v, allowed["format_convention"], "other")) for v in df["format_convention"].values]
+    )
+    benchmark_full = np.array(
+        ["Benchmark" if v is True else "Training" if v is False else "Unknown" for v in df["is_benchmark"].values]
+    )
+
+    # Joined hover string for training_stage (shows all valid stages, not just primary).
+    stage_hover = np.array(
+        [
+            ", ".join(_prettify(s) for s in _maybe_json_list(v) if s in allowed["training_stage"])
+            or _prettify(_primary_stage(v, allowed["training_stage"]))
+            for v in df["training_stage"].values
+        ]
+    )
+
     extra_data = pd.DataFrame(
         {
             "repo_id": df["repo_id"].values,
@@ -245,6 +329,11 @@ def main():
             "size": _esc(sizes_full),
             "license": _esc(licenses_full),
             "updated": [(str(v) or "")[:10] for v in df["last_modified"].values],
+            "subject": _esc(subject_full),
+            "provenance": _esc(provenance_full),
+            "stage": _esc(stage_hover),
+            "format": _esc(format_full),
+            "benchmark": _esc(benchmark_full),
         }
     )
 
@@ -256,6 +345,11 @@ def main():
         langs,
         np.log10(np.maximum(df["likes"].fillna(0).astype(float).values, 1)),
         np.log10(np.maximum(df["downloads"].fillna(0).astype(float).values, 1)),
+        subject_full,
+        provenance_full,
+        stage_full,
+        format_full,
+        benchmark_full,
     ]
 
     def _cat(field, desc, values):
@@ -281,6 +375,11 @@ def main():
         _cat("language", "Language", langs),
         {"field": "likes", "description": "Likes (log10)", "kind": "continuous", "cmap": "YlOrRd"},
         {"field": "downloads", "description": "Downloads (log10)", "kind": "continuous", "cmap": "viridis"},
+        _cat("subject", "Subject Domain (LLM)", subject_full),
+        _cat("provenance", "Provenance (LLM)", provenance_full),
+        _cat("stage", "Training Stage (LLM)", stage_full),
+        _cat("format", "Format Convention (LLM)", format_full),
+        _cat("benchmark", "Benchmark vs Training (LLM)", benchmark_full),
     ]
 
     marker_size = max(3.0, min(10.0, 400.0 / math.sqrt(len(df))))

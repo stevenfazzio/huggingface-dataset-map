@@ -13,11 +13,12 @@ Sister project: `~/repos/semantic-github-map` (same stack, applied to top GitHub
 ```bash
 uv sync --extra dev
 
-python pipeline/00_fetch_datasets.py   # HF Hub list + card download → data/datasets.parquet
-python pipeline/01_embed_cards.py      # Cohere embed-v4.0 → embeddings.npz
-python pipeline/02_reduce_umap.py      # UMAP 512D → 2D → umap_coords.npz
-python pipeline/03_label_topics.py     # Toponymy + Claude Sonnet → labels.parquet
-python pipeline/04_visualize.py        # DataMapPlot → data/huggingface_dataset_map.html
+python pipeline/00_fetch_datasets.py       # HF Hub list + card download → data/datasets.parquet
+python pipeline/01_embed_cards.py          # Cohere embed-v4.0 → embeddings.npz
+python pipeline/02_reduce_umap.py          # UMAP 512D → 2D → umap_coords.npz
+python pipeline/03_label_topics.py         # Toponymy + Claude Sonnet → labels.parquet
+python pipeline/04_extract_structured.py   # Claude Haiku per-card extraction → structured_fields.parquet
+python pipeline/05_visualize.py            # DataMapPlot → data/huggingface_dataset_map.html
 ```
 
 Enumeration is single-stage: `HfApi().list_datasets(sort=..., direction=-1, limit=N, full=True)` already returns ranked, filterable results — no BigQuery-style pre-pass is needed.
@@ -27,17 +28,21 @@ Enumeration is single-stage: `HfApi().list_datasets(sort=..., direction=-1, limi
 Set in `.env` (loaded by `python-dotenv`):
 - `HF_TOKEN` — HuggingFace auth. Raises rate limits; read-only is fine.
 - `CO_API_KEY` — Cohere, used by `01_embed_cards.py` and `03_label_topics.py`.
-- `ANTHROPIC_API_KEY` — Claude Sonnet, used by `03_label_topics.py` for Toponymy topic naming.
+- `ANTHROPIC_API_KEY` — Claude. Used by `03_label_topics.py` (Sonnet, topic naming) and `04_extract_structured.py` (Haiku, per-card field extraction).
 
 ## Architecture
 
 Sequential data pipeline — each script reads outputs from previous stages:
 
 ```
-datasets.parquet ──> embeddings.npz ──> umap_coords.npz ──> labels.parquet
-       │                                                            │
-       └────────────────────────────────────────────────────────────┴──> huggingface_dataset_map.html
+datasets.parquet ──> embeddings.npz ──> umap_coords.npz ──> labels.parquet ──┐
+       │                                                                     │
+       └──> structured_fields.parquet ─────────────────────────────────────┐ │
+                                                                           ▼ ▼
+                                                         huggingface_dataset_map.html
 ```
+
+`structured_fields.parquet` is produced by stage 04 from `datasets.parquet` alone (independent of embeddings/UMAP/topics). It's resumable via per-repo JSONs in `data/structured_fields_cache/`.
 
 `pipeline/config.py` is the central configuration hub: paths, API keys, constants (target count, batch sizes, UMAP params, rank sort key) are all defined there. Every pipeline script imports from it.
 
@@ -47,6 +52,7 @@ Key technology choices:
 - UMAP (n_neighbors=15, min_dist=0.05, cosine) for 512D → 2D
 - Toponymy library for hierarchical density-based clustering with LLM topic naming
 - Claude Sonnet for topic naming inside Toponymy
+- Claude Haiku for per-card structured-field extraction against a constrained schema (`pipeline/taxonomy.json`)
 - DataMapPlot for the final interactive HTML visualization
 
 ## Current Scope and Open Decisions
@@ -54,13 +60,14 @@ Key technology choices:
 - **Target**: top **5,000** datasets ranked by `likes` (per-stage constants in `config.py`).
 - **Rank signal**: decided as `likes` based on `experiments/rank_signal_analysis.py` and `experiments/rank_signal_characterization.py`. Likes-vs-downloads top-1K overlap was only ~17%; downloads-only repos skewed toward newer vision/robotics/pipeline-plumbing data with median 0 likes, while likes-top reflects community-curated, mostly NLP datasets. Revisit if the corpus expands past ~5K, where the bottom slice (likes ~10) starts to be noise-dominated.
 - **Deferred for now**:
-  - LLM card summaries (Haiku) and LLM-extracted structured fields — revisit after the first map reveals what's worth extracting.
+  - LLM card summaries (Haiku) — may revisit if hover needs a prose blurb.
   - `docs/` GitHub Pages deployment, methodology.html, filter panel, Plausible analytics.
   - GitHub Actions CI.
-- **Included from day one**:
+- **Included**:
   - Claude Sonnet topic naming inside Toponymy (cheap per run, materially improves the map).
-  - Hover card with: dataset id, likes, downloads, task_categories, modalities, languages, size_categories, license, last_modified.
-  - Colormaps over: first task_category, first modality, license, size_categories, first language, log-bucketed likes, log-bucketed downloads, and topic layers from Toponymy.
+  - LLM-extracted structured fields (stage 04, Haiku): provenance_method, subject_domain, training_stage, format_convention, special_characteristics, geo_scope, upstream_models, is_benchmark. Schema lives in `pipeline/taxonomy.json`; iteration history is in `experiments/extract_structured_fields_v{1,2,3}.py` and `experiments/taxonomy_v3_proposed.json`.
+  - Hover card with: dataset id, likes, downloads, HF metadata (task, modality, language, size, license, updated), and LLM fields (subject, stage, provenance, format, benchmark).
+  - Colormaps over HF metadata (first task_category, first modality, license, size_categories, first language, log-bucketed likes, log-bucketed downloads), Toponymy topic layers, and LLM fields (subject_domain, provenance_method, training_stage primary, format_convention, is_benchmark).
 
 ## Data Pipeline Rules
 
@@ -70,7 +77,7 @@ Key technology choices:
 
 ## Data Directory
 
-All outputs go to `data/` (gitignored). Key files: `datasets.parquet`, `embeddings.npz`, `umap_coords.npz`, `labels.parquet`, `toponymy_model.joblib`, `huggingface_dataset_map.html`.
+All outputs go to `data/` (gitignored). Key files: `datasets.parquet`, `embeddings.npz`, `umap_coords.npz`, `labels.parquet`, `toponymy_model.joblib`, `structured_fields.parquet`, `structured_fields_cache/` (per-repo extraction JSONs, used for resume), `huggingface_dataset_map.html`.
 
 ## Development
 

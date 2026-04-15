@@ -18,6 +18,9 @@ EMBEDDINGS_NPZ = DATA_DIR / "embeddings.npz"
 UMAP_COORDS_NPZ = DATA_DIR / "umap_coords.npz"
 TOPONYMY_MODEL_JOBLIB = DATA_DIR / "toponymy_model.joblib"
 LABELS_PARQUET = DATA_DIR / "labels.parquet"
+STRUCTURED_FIELDS_PARQUET = DATA_DIR / "structured_fields.parquet"
+STRUCTURED_FIELDS_CACHE_DIR = DATA_DIR / "structured_fields_cache"
+TAXONOMY_JSON = Path(__file__).resolve().parent / "taxonomy.json"
 MAP_HTML = DATA_DIR / "huggingface_dataset_map.html"
 
 # ── Docs (GitHub Pages) ──────────────────────────────────────────────────────
@@ -42,6 +45,10 @@ UMAP_N_NEIGHBORS = 15
 UMAP_MIN_DIST = 0.05
 UMAP_RANDOM_STATE = 42
 ANTHROPIC_MODEL_TOPIC_NAMING = "claude-sonnet-4-20250514"
+ANTHROPIC_MODEL_EXTRACT = "claude-haiku-4-5-20251001"
+EXTRACT_CONCURRENCY = 12
+EXTRACT_CARD_CHAR_LIMIT = 6_000
+EXTRACT_MAX_RETRIES = 4
 
 # ── Experiments ─────────────────────────────────────────────────────────────
 EXPERIMENTS_DIR = DATA_DIR / "experiments"

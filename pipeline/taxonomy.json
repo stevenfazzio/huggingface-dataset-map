@@ -1,0 +1,116 @@
+{
+  "_comment": "Pipeline schema for LLM-extracted structured fields. Promoted from experiments/taxonomy_v3_proposed.json after a 5000-card validation round. See experiments/ for iteration history.",
+
+  "provenance_method": {
+    "_note": "Single-select. v2 'mixed' hit 49/500 (10%) — too high — because the model used it as an escape hatch. v3 tightens the description: 'mixed' requires BOTH halves to be load-bearing, not just 'I'm a bit unsure.'",
+    "type": "single-select",
+    "categories": [
+      {"name": "human-created", "description": "Primary-source content written, recorded, or annotated by humans. Includes crowdsourced labels, expert annotations, human-written prompts/responses, and speaker recordings where humans are the source of the content."},
+      {"name": "web-scraped", "description": "Harvested from public web sources (websites, social platforms, APIs). The distinguishing feature is that a crawler/scraper collected content that already existed on the web, without re-authoring it."},
+      {"name": "sensor-recorded", "description": "Captured from physical instruments or environments: robot trajectories, sensor streams, microphone recordings of natural sound, camera captures of real-world phenomena. Distinct from human-created (which implies humans as the content source) and web-scraped (which implies pre-existing web data)."},
+      {"name": "llm-generated", "description": "Content produced by an LLM or generative model, including synthetic instructions, synthetic preferences, distilled outputs, and model-written explanations. Include cases where a model generated the data even if humans later filtered it."},
+      {"name": "translated", "description": "Primarily a translation of another dataset from one language to another. The content structure carries over; only the language changes. Include both machine-translated (DeepL, GPT-4) and human-translated datasets."},
+      {"name": "filtered-subset", "description": "A selected, cleaned, or otherwise filtered subset of a single parent dataset. The content is unchanged; the curation is in what was kept or dropped."},
+      {"name": "remix", "description": "Combined from multiple existing datasets. Typical of SFT mixtures and preference mixtures that aggregate several upstream corpora."},
+      {"name": "algorithmically-derived", "description": "Computed from another dataset by a deterministic or algorithmic process (embeddings, tokenizations, automatic annotations via classical methods, rendered variations). Not primarily LLM-generated, not primarily a filter."},
+      {"name": "mixed", "description": "USE RARELY. Only choose this when the card explicitly describes TWO OR MORE load-bearing creation methods that jointly produce the data (e.g. 'human-written prompts with LLM-generated responses'). Do NOT use 'mixed' as a fallback for uncertainty — if one method dominates, choose that method even if others were involved. Do NOT use 'mixed' merely because the data was later filtered or translated — filtered-subset and translated are their own categories."},
+      {"name": "other", "description": "Card describes a method that doesn't fit any category above. Also use for unusual cases like procedurally-generated game data."},
+      {"name": "not_stated", "description": "The card does not describe how the data was created."}
+    ]
+  },
+
+  "subject_domain": {
+    "_note": "v2 had 19 slugs + 4 cards that wanted 'multi-domain' (invalid in v2). v3 adds 'multi-domain' as a legitimate slug for benchmarks/corpora that span multiple subject areas by design.",
+    "type": "single-select",
+    "categories": [
+      {"name": "general-web-text", "description": "Open-domain web crawl, Wikipedia-style corpora, general-purpose text for pretraining. Not topically focused."},
+      {"name": "instruction-and-chat", "description": "Instruction-following data, assistant dialogues, preference pairs for chat alignment, roleplay. The content's PURPOSE is chat/instruction training, regardless of underlying topic."},
+      {"name": "code-and-software", "description": "Source code, code completions, code review, developer documentation, software engineering tasks."},
+      {"name": "math-and-reasoning", "description": "Math problems, formal reasoning, theorem proving, logical puzzles, chain-of-thought reasoning traces."},
+      {"name": "scientific-research", "description": "Academic papers, research abstracts, chemistry, physics, molecular/materials data, scientific literature."},
+      {"name": "medical-and-biomedical", "description": "Medical imaging, clinical notes, biomedical text, patient data, health records, pharmacology."},
+      {"name": "natural-images-and-video", "description": "Photographs, natural video, real-world visual content. Image classification, object detection, scene understanding datasets with non-synthetic sources."},
+      {"name": "generated-media", "description": "AI-generated images, synthetic video, AI-generated audio. Datasets whose content IS synthetic media (distinct from datasets ABOUT detection of synthetic media)."},
+      {"name": "speech-and-audio", "description": "Speech recordings, TTS training data, ASR corpora, music, environmental audio, audio classification."},
+      {"name": "legal-and-policy", "description": "Legal documents, case law, regulations, government policy, terms of service, compliance text."},
+      {"name": "finance-and-business", "description": "Financial reports, market data, trading, cryptocurrency, e-commerce records, business documents, real-estate listings."},
+      {"name": "safety-alignment", "description": "Safety training data, red-team prompts, jailbreak attempts, toxicity classification, adversarial evaluation."},
+      {"name": "robotics-and-embodied", "description": "Robot trajectories, manipulation data, embodied AI, humanoid control, sim-to-real."},
+      {"name": "3d-and-simulation", "description": "3D models, meshes, point clouds, physics simulations, synthetic environments."},
+      {"name": "agent-and-tool-use", "description": "Agentic trajectories, tool-calling demonstrations, multi-step task execution, function-calling."},
+      {"name": "entertainment-and-gaming", "description": "Video game data, sports, movies/TV, fiction, creative content consumption."},
+      {"name": "geospatial", "description": "Maps, satellite imagery, geographic data, remote sensing, GIS."},
+      {"name": "multi-domain", "description": "Benchmark or corpus that deliberately spans multiple subject areas (e.g. MMLU covers 57 subjects; multi-task eval suites; general-knowledge question banks). Use when multi-domain IS the design, not just when the card is ambiguous."},
+      {"name": "other", "description": "Subject matter that doesn't fit any category above. Prefer a specific category when possible."},
+      {"name": "not_stated", "description": "The card doesn't describe what the data is about in enough detail to categorize."}
+    ]
+  },
+
+  "training_stage": {
+    "_note": "Unchanged from v2. Multi-select because dual-use cards are real.",
+    "type": "multi-select",
+    "categories": [
+      {"name": "pretraining", "description": "Large unlabeled or weakly-labeled corpus for pretraining a base model."},
+      {"name": "sft", "description": "Supervised fine-tuning data: instruction-response pairs or task-specific labeled examples."},
+      {"name": "preference", "description": "Preference pairs, DPO/RLHF training data, reward modeling data."},
+      {"name": "eval", "description": "Benchmark or evaluation dataset. Intended for measuring models, not training them."},
+      {"name": "domain-finetune", "description": "Fine-tuning data for domain adaptation (legal LLM, medical LLM, code LLM). Distinct from general SFT."},
+      {"name": "raw-corpus", "description": "Raw collected data (scrape, recordings) not yet packaged for a specific training stage. Downstream users decide what to do with it."},
+      {"name": "other", "description": "Some other training-adjacent use (e.g. reward-model training data that's distinct from preference pairs)."},
+      {"name": "not_stated", "description": "The card doesn't describe intended training use."}
+    ]
+  },
+
+  "format_convention": {
+    "_note": "NEW in v3. Captures de-facto community dataset-format conventions (ShareGPT, Alpaca, DPO pairs, VQA, etc.) — a structural/schema property orthogonal to subject, stage, and provenance. Motivated by Toponymy labels like 'Role-Playing ShareGPT Datasets' (107) and 'Alpaca Instruction Tuning' (62) that existing fields couldn't distinguish.",
+    "type": "single-select",
+    "categories": [
+      {"name": "sharegpt", "description": "ShareGPT-style conversation format: list of turns with {from: 'human'|'gpt', value: text}. Used by many roleplay and chat-SFT datasets."},
+      {"name": "alpaca", "description": "Alpaca-style triples: {instruction, input, output}. Typical of early instruction-tuning datasets."},
+      {"name": "preference-pairs", "description": "Preference data with chosen/rejected responses per prompt. Covers DPO, RLHF-style, and reward-modeling pair formats."},
+      {"name": "prompt-completion", "description": "Single-turn prompt/completion or input/output pairs that are NOT Alpaca-style (no separate instruction field) and NOT multi-turn chat."},
+      {"name": "vqa", "description": "Visual question answering: image + question + answer (including document VQA, chart VQA, video VQA)."},
+      {"name": "image-caption", "description": "Image + caption pair datasets (no question). Used for T2I training and image-text alignment."},
+      {"name": "audio-transcript", "description": "Audio clip paired with text transcript or caption. Covers ASR training, TTS training, and audio captioning."},
+      {"name": "raw-text", "description": "Unstructured text documents or passages (pretraining corpora, web scrapes). No per-example labels or turn structure."},
+      {"name": "tabular", "description": "Row-column structured records (CSV/parquet with multiple feature columns per row). Typical of domain records like real-estate listings or financial data."},
+      {"name": "multi-turn-chat", "description": "Multi-turn conversational data that does NOT use the ShareGPT field convention (e.g. OpenAI chat format with role/content, or custom JSON)."},
+      {"name": "other", "description": "A clearly-described format that doesn't match any category above."},
+      {"name": "not_stated", "description": "The card doesn't describe the data format clearly enough to classify."}
+    ]
+  },
+
+  "special_characteristics": {
+    "_note": "NEW in v3. Multi-select LIST — most datasets will return [] (empty list). Captures orthogonal dataset-level properties that aren't tied to domain, stage, or provenance. Motivated by Toponymy labels like 'Long Context LLM Evaluation' (74), 'Synthetic Reasoning Datasets' (66), and 'Role-Playing Character Datasets' (60).",
+    "type": "multi-select",
+    "rule": "Return a LIST of zero or more applicable slugs. MOST DATASETS SHOULD RETURN []. Only add a slug when the card makes the property explicit and central to the dataset's purpose. Never use slugs outside this list; if nothing applies, return [].",
+    "categories": [
+      {"name": "long-context", "description": "Examples deliberately extend to long input lengths (typically >4K tokens, often much longer). The long-context nature is explicit."},
+      {"name": "multi-turn", "description": "Dialogue data with 3+ back-and-forth turns per example (beyond the standard single user-assistant exchange)."},
+      {"name": "adversarial", "description": "Designed to be hard or to probe failure modes: red-team prompts, jailbreak attempts, adversarial examples, trick questions."},
+      {"name": "reasoning-traces", "description": "Includes step-by-step reasoning, chain-of-thought, scratchpad content, or explanation of intermediate steps alongside final answers."},
+      {"name": "low-resource-language", "description": "Focus on underrepresented or low-resource languages where data is scarce. (Don't tag this for widely-resourced languages like English/Chinese/Spanish.)"},
+      {"name": "multilingual-parallel", "description": "Parallel translations of the same content across multiple languages (translation corpora, parallel QA benchmarks)."},
+      {"name": "roleplay", "description": "Character roleplay, persona-based dialogue, or fictional-scenario chat data."},
+      {"name": "long-form-generation", "description": "Target outputs are long-form (essays, articles, stories, reports) rather than short answers or single sentences."}
+    ]
+  },
+
+  "geo_scope": {
+    "_note": "Unchanged from v2. Policy: force not_stated unless explicit.",
+    "type": "single-select-or-list",
+    "rule": "Return a list of country/region names if the card is explicit. Return ['global'] ONLY if the card explicitly says the content is worldwide/international in scope. Return ['not_applicable'] for content that has no meaningful geography (math, code, generic text, generated media, abstract tasks). Return ['not_stated'] if the card is silent — this is the default, not 'global'. ALWAYS return a JSON list, even for single values."
+  },
+
+  "upstream_models": {
+    "_note": "Unchanged from v2.",
+    "type": "open-list",
+    "rule": "Return a list of model names explicitly mentioned in the card as having generated or been distilled into this data (e.g. 'GPT-4', 'Claude 3.5 Sonnet', 'Llama-3.1-70B'). Return ['not_applicable'] if the card doesn't involve model-generated content. Return ['not_stated'] if the card describes model generation but doesn't name the models. ALWAYS return a JSON list, even for single values."
+  },
+
+  "is_benchmark": {
+    "_note": "Unchanged from v2.",
+    "type": "boolean",
+    "rule": "true if the dataset is explicitly intended as an evaluation benchmark (held-out test, leaderboard, eval suite). false for training corpora even if they could be used for eval."
+  }
+}
