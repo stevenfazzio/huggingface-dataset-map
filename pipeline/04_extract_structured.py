@@ -70,12 +70,29 @@ is mostly wasted spend.
 Doing #1+#2+#3+#4+#5 together roughly triples the value per $30 rerun vs
 just #1.
 
+BEFORE paying for the full rerun: validate the prompt changes with a cheap
+stratified sample first. Use `data/experiments/evoc_taxonomy/cluster_layers.npz`
+to draw 2-3 datasets from each of the 45 finest-layer EVoC clusters (~100-130
+cards, ~$0.40 in Haiku), run the revised prompt, diff extractions against the
+current `data/structured_fields.parquet` for those repo_ids. This guarantees
+concept-space coverage (way better than random sampling) and tells you whether
+the prompt changes actually move the needle before you commit $30. If the
+sample shows (a) RAG cluster correctly picks up the new slug, (b) multi-turn
+dedupe behaves as intended, and (c) validation issue count drops materially
+for the sampled bleed concepts, the full rerun is justified.
+
 Related:
 - `pipeline/05_visualize.py` coerces invalid slugs to 'other' for rendering,
   so phantom legend entries won't appear regardless of whether these fixes
   land. Truth is preserved in `data/structured_fields.parquet`.
 - Post-hoc canonicalization of `upstream_models` happens in `aggregate()`
   below (added separately — no rerun needed for that one).
+- Cluster-signature analysis in `experiments/evoc_cluster_signatures.py`
+  profiles each EVoC cluster against all structured + HF fields and flags
+  name↔subject mismatches. Current run flags 12 clusters — mostly benign
+  (author-family names, multi-domain benchmarks), but "Multilingual Parallel
+  Corpora" → subject=general-web-text (34%) is a real extraction-quality
+  issue that the orthogonality fix in #1 should help with.
 ═══════════════════════════════════════════════════════════════════════════
 """
 
