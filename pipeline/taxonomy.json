@@ -1,5 +1,5 @@
 {
-  "_comment": "Pipeline schema for LLM-extracted structured fields. Promoted from experiments/taxonomy_v3_proposed.json after a 5000-card validation round. See experiments/ for iteration history.",
+  "_comment": "Pipeline schema for LLM-extracted structured fields. v3→v4 changes (2026-04-15): added rag-evaluation to subject_domain (gap-analysis finding, 33 datasets); added not_applicable to training_stage (5 cards wanted this, and model-output datasets are genuinely not-for-training); removed multi-turn-chat from format_convention (deduped with special_characteristics=multi-turn, sim=0.708); added structured-record to format_convention (the ~20% 'other' bucket was dominated by multi-field schema datasets). System prompt also adds an orthogonality rule to reduce cross-field slug bleed. See experiments/ and pipeline/04_extract_structured.py docstring for iteration history.",
 
   "provenance_method": {
     "_note": "Single-select. v2 'mixed' hit 49/500 (10%) — too high — because the model used it as an escape hatch. v3 tightens the description: 'mixed' requires BOTH halves to be load-bearing, not just 'I'm a bit unsure.'",
@@ -41,6 +41,7 @@
       {"name": "entertainment-and-gaming", "description": "Video game data, sports, movies/TV, fiction, creative content consumption."},
       {"name": "geospatial", "description": "Maps, satellite imagery, geographic data, remote sensing, GIS."},
       {"name": "multi-domain", "description": "Benchmark or corpus that deliberately spans multiple subject areas (e.g. MMLU covers 57 subjects; multi-task eval suites; general-knowledge question banks). Use when multi-domain IS the design, not just when the card is ambiguous."},
+      {"name": "rag-evaluation", "description": "Retrieval-augmented generation benchmarks and evaluation datasets: questions paired with documents to retrieve/ground answers in. Distinct from instruction-and-chat (which is open-ended) and question-answering-in-general (which doesn't imply a retrieval step). Use when retrieval grounding is central to the dataset's design."},
       {"name": "other", "description": "Subject matter that doesn't fit any category above. Prefer a specific category when possible."},
       {"name": "not_stated", "description": "The card doesn't describe what the data is about in enough detail to categorize."}
     ]
@@ -56,6 +57,7 @@
       {"name": "eval", "description": "Benchmark or evaluation dataset. Intended for measuring models, not training them."},
       {"name": "domain-finetune", "description": "Fine-tuning data for domain adaptation (legal LLM, medical LLM, code LLM). Distinct from general SFT."},
       {"name": "raw-corpus", "description": "Raw collected data (scrape, recordings) not yet packaged for a specific training stage. Downstream users decide what to do with it."},
+      {"name": "not_applicable", "description": "Not training data at all — e.g. a dataset of model outputs used for analysis/leaderboards, a reference corpus, or annotations whose purpose is measurement rather than model training. Distinct from not_stated (which means the card is silent)."},
       {"name": "other", "description": "Some other training-adjacent use (e.g. reward-model training data that's distinct from preference pairs)."},
       {"name": "not_stated", "description": "The card doesn't describe intended training use."}
     ]
@@ -68,13 +70,13 @@
       {"name": "sharegpt", "description": "ShareGPT-style conversation format: list of turns with {from: 'human'|'gpt', value: text}. Used by many roleplay and chat-SFT datasets."},
       {"name": "alpaca", "description": "Alpaca-style triples: {instruction, input, output}. Typical of early instruction-tuning datasets."},
       {"name": "preference-pairs", "description": "Preference data with chosen/rejected responses per prompt. Covers DPO, RLHF-style, and reward-modeling pair formats."},
-      {"name": "prompt-completion", "description": "Single-turn prompt/completion or input/output pairs that are NOT Alpaca-style (no separate instruction field) and NOT multi-turn chat."},
+      {"name": "prompt-completion", "description": "Single-turn prompt/completion or input/output pairs where the dataset's PURPOSE is pairing an input with a target output. This includes QA datasets, reading-comprehension benchmarks, single-turn eval prompts, and task-specific input→output pairs — even if stored with extra metadata columns like id/difficulty/source. Pick this over structured-record whenever there's a clear input→output semantic axis."},
       {"name": "vqa", "description": "Visual question answering: image + question + answer (including document VQA, chart VQA, video VQA)."},
       {"name": "image-caption", "description": "Image + caption pair datasets (no question). Used for T2I training and image-text alignment."},
       {"name": "audio-transcript", "description": "Audio clip paired with text transcript or caption. Covers ASR training, TTS training, and audio captioning."},
       {"name": "raw-text", "description": "Unstructured text documents or passages (pretraining corpora, web scrapes). No per-example labels or turn structure."},
-      {"name": "tabular", "description": "Row-column structured records (CSV/parquet with multiple feature columns per row). Typical of domain records like real-estate listings or financial data."},
-      {"name": "multi-turn-chat", "description": "Multi-turn conversational data that does NOT use the ShareGPT field convention (e.g. OpenAI chat format with role/content, or custom JSON)."},
+      {"name": "tabular", "description": "Row-column structured records of simple atomic values (CSV/parquet with numeric, categorical, and short-text columns). Typical of real-estate listings or financial market data. Distinct from structured-record which has complex nested or dataset-specific schemas."},
+      {"name": "structured-record", "description": "USE SPARINGLY. Multi-field records with NO dominant input→output or prompt→target semantic — i.e. the dataset is fundamentally a collection of structured observations where several fields carry equal semantic weight and none plays the 'question' or 'input' role. Examples: git commits with {before_code, after_code, commit_message, test_results}; software-engineering benchmarks where the evaluation harness ties multiple fields together as peers. Do NOT use this for datasets that happen to have several columns but semantically ARE input→output pairs (those are prompt-completion, QA, etc.)."},
       {"name": "other", "description": "A clearly-described format that doesn't match any category above."},
       {"name": "not_stated", "description": "The card doesn't describe the data format clearly enough to classify."}
     ]

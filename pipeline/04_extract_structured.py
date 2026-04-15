@@ -5,95 +5,19 @@ dataset, validates responses against the schema, and emits a flat-column
 parquet for the visualize stage. Resumable: per-repo JSON files in
 `data/structured_fields_cache/` are skipped on rerun.
 
-═══════════════════════════════════════════════════════════════════════════
-Known improvements for the NEXT re-run of this stage
-═══════════════════════════════════════════════════════════════════════════
-If you plan to delete `data/structured_fields_cache/` and re-extract on the
-full 5K corpus (~$30, ~30 min), apply these edits first so the rerun buys
-improvements beyond just reproducing the current result. Otherwise a rerun
-is mostly wasted spend.
-
-1. ORTHOGONALITY RULE in the system prompt (see `build_system_prompt`).
-   Add a RULE: "Each field is a different axis. If a concept fits multiple
-   fields, prefer: subject_domain = noun (what the data is ABOUT),
-   format_convention = schema shape (how rows are structured),
-   special_characteristics = orthogonal properties (long-context, roleplay,
-   multilingual-parallel, ...). Do not reuse a slug across fields. Example:
-   a VQA dataset has subject_domain='natural-images-and-video' AND
-   format_convention='vqa' — these are different fields."
-   Target: cuts ~70% of validation issues (cross-field slug bleed). Today's
-   biggest offenders: `multilingual-parallel` appearing as an invalid slug
-   in 3 different fields (28 cases total), `vqa` leaking into subject_domain
-   (25 cases), `raw-corpus` leaking into provenance_method (19 cases).
-
-2. ADD `not_applicable` SLUG to `training_stage` in `pipeline/taxonomy.json`.
-   Description: "Not training data (e.g. raw reference corpus or dataset of
-   model outputs not intended for training). Distinct from 'not_stated' which
-   means the card is silent on intended use." In the 5K run, 5 rows failed
-   validation because the model wanted this slug but it wasn't in the enum.
-   With a rerun, expect more — today those cards hedge to `not_stated` or
-   `raw-corpus` incorrectly.
-
-3. CONSIDER EXPANDING `format_convention` ENUM. The `other` bucket hit
-   990/4774 (~20%) — a fifth of cards use a format convention we didn't
-   enumerate. Before re-running, sample 30-50 rows where
-   `format_convention == 'other'` and read their `format_convention_quote`
-   values. If 1-3 clear clusters emerge (candidates: HF-datasets library
-   schemas, CoNLL-U, entity-relation, graph, key-value), add those slugs.
-   This is the single largest quality issue in the LLM fields today.
-
-4. ADD `rag-evaluation` SLUG to `subject_domain`. Surfaced by the EVoC
-   taxonomy-gap analysis in `experiments/taxonomy_gap_analysis.py` as the
-   #1 genuine gap (33 datasets, nearest-slug distance 0.580 — clearly
-   separated from combination-level clusters and author-family noise).
-   Proposed description: "Retrieval-augmented generation benchmarks and
-   evaluation datasets: questions paired with documents to retrieve/ground
-   answers in. Distinct from instruction-and-chat (which is open-ended) and
-   question-answering (which doesn't imply a retrieval step)."
-   Evidence: `data/experiments/taxonomy_gap_analysis/report.html`.
-
-5. DEDUPLICATE `format_convention=multi-turn-chat` vs
-   `special_characteristics=multi-turn`. Orthogonality analysis found
-   these with sim=0.708 — the highest non-expected cross-field similarity.
-   They describe the same concept from two axes. Two resolution options:
-   (a) Remove `multi-turn-chat` from format_convention and let the chat-
-       shape distinction be carried by `sharegpt` vs `prompt-completion`
-       vs `alpaca`. `multi-turn` in special_characteristics becomes the
-       sole carrier of "has 3+ turns."
-   (b) Rename `multi-turn-chat` to something structural like
-       `chat-openai-format` to clarify it's about schema shape (role/content
-       JSON) vs conversation length.
-   (a) is simpler; (b) preserves the format-shape axis. The 26 cards
-   currently tagged `multi-turn-chat` in format_convention would move to
-   `other` or a more specific slug under (a), or get renamed under (b).
-
-Doing #1+#2+#3+#4+#5 together roughly triples the value per $30 rerun vs
-just #1.
-
-BEFORE paying for the full rerun: validate the prompt changes with a cheap
-stratified sample first. Use `data/experiments/evoc_taxonomy/cluster_layers.npz`
-to draw 2-3 datasets from each of the 45 finest-layer EVoC clusters (~100-130
-cards, ~$0.40 in Haiku), run the revised prompt, diff extractions against the
-current `data/structured_fields.parquet` for those repo_ids. This guarantees
-concept-space coverage (way better than random sampling) and tells you whether
-the prompt changes actually move the needle before you commit $30. If the
-sample shows (a) RAG cluster correctly picks up the new slug, (b) multi-turn
-dedupe behaves as intended, and (c) validation issue count drops materially
-for the sampled bleed concepts, the full rerun is justified.
-
-Related:
+Related tooling (mostly in `experiments/`):
 - `pipeline/05_visualize.py` coerces invalid slugs to 'other' for rendering,
-  so phantom legend entries won't appear regardless of whether these fixes
-  land. Truth is preserved in `data/structured_fields.parquet`.
+  so phantom legend entries don't appear; truth stays in the parquet.
+- `experiments/rerun_validation_sample.py` runs an EVoC-stratified ~130-card
+  sample to preview prompt/taxonomy changes before paying for a full 5K rerun.
+- `experiments/taxonomy_gap_analysis.py` and `experiments/evoc_cluster_signatures.py`
+  surface candidate taxonomy improvements (new slugs, redundancies, extraction-
+  quality issues). Run these first when considering taxonomy edits.
 - Post-hoc canonicalization of `upstream_models` happens in `aggregate()`
-  below (added separately — no rerun needed for that one).
-- Cluster-signature analysis in `experiments/evoc_cluster_signatures.py`
-  profiles each EVoC cluster against all structured + HF fields and flags
-  name↔subject mismatches. Current run flags 12 clusters — mostly benign
-  (author-family names, multi-domain benchmarks), but "Multilingual Parallel
-  Corpora" → subject=general-web-text (34%) is a real extraction-quality
-  issue that the orthogonality fix in #1 should help with.
-═══════════════════════════════════════════════════════════════════════════
+  (collapses GPT-4 / gpt-4 / GPT4 to a single display form).
+
+Iteration history for the schema itself lives in `pipeline/taxonomy.json`'s
+`_comment` field and in `experiments/taxonomy_v{2,3}_proposed.json`.
 """
 
 from __future__ import annotations
@@ -174,6 +98,17 @@ def build_system_prompt(taxonomy: dict) -> tuple[str, list[str]]:
         "No paraphrases, no combined values like 'a / b'.\n"
         "- For LIST-typed fields, the `value` MUST be a JSON array even if only one item applies: "
         '`["item"]`. Never a bare string.\n'
+        "- Each field captures a DIFFERENT axis. Do NOT reuse a slug from one field as the value "
+        "for another field. Axis definitions: `subject_domain` = what the data is ABOUT (noun); "
+        "`provenance_method` = HOW the data was created; `training_stage` = what the data is FOR "
+        "in the training stack; `format_convention` = the SCHEMA SHAPE of each record; "
+        "`special_characteristics` = orthogonal PROPERTIES (long-context, roleplay, "
+        "multilingual-parallel, reasoning-traces, etc.). Example: a VQA dataset has "
+        "`subject_domain='natural-images-and-video'` AND `format_convention='vqa'` — those are "
+        "different fields describing different axes. A multilingual-parallel corpus has "
+        "`special_characteristics=['multilingual-parallel']` AND a separate subject slug for the "
+        "content topic AND a separate format slug for the record shape — do not put "
+        "'multilingual-parallel' in subject_domain or format_convention.\n"
         "- For each field, include `quote`: a ≤25-word verbatim span from the card that justified "
         "your choice. If silent, use the sentinel 'not_stated' for the quote.\n"
         "- Output strictly valid JSON. No prose, no markdown fences, no commentary outside the JSON object.\n\n"
