@@ -16,6 +16,7 @@ from config import (
     LABELS_PARQUET,
     MAP_HTML,
     STRUCTURED_FIELDS_PARQUET,
+    SUMMARIES_PARQUET,
     UMAP_COORDS_NPZ,
 )
 from matplotlib import colormaps as mpl_colormaps
@@ -238,6 +239,7 @@ HOVER_TEMPLATE = (
     "<div style=\"font-family:'IBM Plex Sans',sans-serif;max-width:380px;padding:6px 2px;\">"
     '<div style="font-weight:600;font-size:13px;color:#1f2328;margin-bottom:4px;">{repo_id}</div>'
     '<div style="font-size:11.5px;color:#57606a;margin-bottom:6px;">♥ {likes} &nbsp;·&nbsp; ↓ {downloads}</div>'
+    '<div style="font-size:12px;color:#1f2328;line-height:1.4;margin-bottom:8px;font-style:italic;">{summary}</div>'
     '<div style="font-size:11.5px;color:#3d4752;line-height:1.45;">'
     "<div><b>task:</b> {task} &nbsp;·&nbsp; <b>modality:</b> {modality}</div>"
     "<div><b>language:</b> {language} &nbsp;·&nbsp; <b>size:</b> {size}</div>"
@@ -258,6 +260,7 @@ def main():
     _ = np.load(EMBEDDINGS_NPZ)["embeddings"]  # reserved for future edge bundling
     labels = pd.read_parquet(LABELS_PARQUET)
     structured = pd.read_parquet(STRUCTURED_FIELDS_PARQUET)
+    summaries = pd.read_parquet(SUMMARIES_PARQUET)
 
     df = df.merge(labels, on="repo_id", how="left")
     structured_cols = [
@@ -269,6 +272,7 @@ def main():
         "is_benchmark",
     ]
     df = df.merge(structured[structured_cols], on="repo_id", how="left")
+    df = df.merge(summaries[["repo_id", "summary"]], on="repo_id", how="left")
 
     label_cols = sorted(c for c in df.columns if c.startswith("label_layer_"))
     label_layers = [df[c].fillna("Unlabeled").astype(str).values for c in label_cols]
@@ -318,11 +322,15 @@ def main():
         ]
     )
 
+    # Summary: LLM TL;DR (stage 04b). Rare missing rows fall back to blank.
+    summary_hover = [(s if isinstance(s, str) and s else "") for s in df["summary"].values]
+
     extra_data = pd.DataFrame(
         {
             "repo_id": df["repo_id"].values,
             "likes": [f"{int(x or 0):,}" for x in df["likes"].values],
             "downloads": [f"{int(x or 0):,}" for x in df["downloads"].values],
+            "summary": _esc(summary_hover),
             "task": _esc(tasks_full),
             "modality": _esc(modalities_full),
             "language": _esc(langs_full),

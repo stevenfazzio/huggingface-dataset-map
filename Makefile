@@ -18,6 +18,7 @@ pipeline:
 	uv run python pipeline/02_reduce_umap.py
 	uv run python pipeline/03_label_topics.py
 	uv run python pipeline/04_extract_structured.py
+	uv run python pipeline/04b_summarize_cards.py
 	uv run python pipeline/05_visualize.py
 
 clean:

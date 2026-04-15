@@ -20,6 +20,8 @@ TOPONYMY_MODEL_JOBLIB = DATA_DIR / "toponymy_model.joblib"
 LABELS_PARQUET = DATA_DIR / "labels.parquet"
 STRUCTURED_FIELDS_PARQUET = DATA_DIR / "structured_fields.parquet"
 STRUCTURED_FIELDS_CACHE_DIR = DATA_DIR / "structured_fields_cache"
+SUMMARIES_PARQUET = DATA_DIR / "summaries.parquet"
+SUMMARIES_CACHE_DIR = DATA_DIR / "summaries_cache"
 TAXONOMY_JSON = Path(__file__).resolve().parent / "taxonomy.json"
 MAP_HTML = DATA_DIR / "huggingface_dataset_map.html"
 
@@ -49,6 +51,12 @@ ANTHROPIC_MODEL_EXTRACT = "claude-haiku-4-5-20251001"
 EXTRACT_CONCURRENCY = 12
 EXTRACT_CARD_CHAR_LIMIT = 6_000
 EXTRACT_MAX_RETRIES = 4
+
+ANTHROPIC_MODEL_SUMMARIZE = "claude-haiku-4-5-20251001"
+SUMMARIZE_CONCURRENCY = 12
+SUMMARIZE_CARD_CHAR_LIMIT = 4_000  # TL;DRs come from the opening; shorter than extract
+SUMMARIZE_MAX_WORDS = 25
+SUMMARIZE_MAX_RETRIES = 4
 
 # ── Experiments ─────────────────────────────────────────────────────────────
 EXPERIMENTS_DIR = DATA_DIR / "experiments"
