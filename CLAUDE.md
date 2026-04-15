@@ -51,8 +51,8 @@ Key technology choices:
 
 ## Current Scope and Open Decisions
 
-- **Target**: top **1,000** datasets (per-stage constants in `config.py`). Easy to bump.
-- **Rank signal open question**: `RANK_SORT_KEY = "likes"` for now, but `downloads` is also stored on every row. Formal comparison lives in `experiments/rank_signal_analysis.py` (to be written) and the decision will land there.
+- **Target**: top **5,000** datasets ranked by `likes` (per-stage constants in `config.py`).
+- **Rank signal**: decided as `likes` based on `experiments/rank_signal_analysis.py` and `experiments/rank_signal_characterization.py`. Likes-vs-downloads top-1K overlap was only ~17%; downloads-only repos skewed toward newer vision/robotics/pipeline-plumbing data with median 0 likes, while likes-top reflects community-curated, mostly NLP datasets. Revisit if the corpus expands past ~5K, where the bottom slice (likes ~10) starts to be noise-dominated.
 - **Deferred for now**:
   - LLM card summaries (Haiku) and LLM-extracted structured fields — revisit after the first map reveals what's worth extracting.
   - `docs/` GitHub Pages deployment, methodology.html, filter panel, Plausible analytics.

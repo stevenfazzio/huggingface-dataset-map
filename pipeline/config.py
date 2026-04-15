@@ -31,9 +31,9 @@ CO_API_KEY = os.environ.get("CO_API_KEY", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # ── Constants ────────────────────────────────────────────────────────────────
-TARGET_DATASET_COUNT = 1_000
-FETCH_OVERSHOOT_COUNT = 1_200
-RANK_SORT_KEY = "likes"  # "likes" or "downloads"; see experiments/rank_signal_analysis.py
+TARGET_DATASET_COUNT = 5_000
+FETCH_OVERSHOOT_COUNT = 6_000
+RANK_SORT_KEY = "likes"  # decided via experiments/rank_signal_analysis.py + _characterization.py
 COHERE_BATCH_SIZE = 96
 COHERE_EMBED_DIMENSION = 512
 CARD_MAX_CHARS = 4_000

@@ -40,8 +40,8 @@ Set in `.env`:
 
 ## Current scope
 
-- **Target**: top **1,000** datasets, ranked by `likes` (see `pipeline/config.py`).
-- **Rank signal TBD**: likes vs downloads vs hybrid is deferred to `experiments/rank_signal_analysis.py`. Stage 00 stores both so the choice is a one-line swap.
+- **Target**: top **5,000** datasets, ranked by `likes` (see `pipeline/config.py`).
+- **Rank signal**: `likes`, chosen via `experiments/rank_signal_analysis.py` and `experiments/rank_signal_characterization.py`. Likes ranks community-curated, mostly NLP datasets; downloads also picks up a lot of vision/robotics/pipeline-plumbing data with median 0 likes (top-1K overlap between the two rankings is only ~17%).
 - **Hover card v1**: dataset id, likes, downloads, task_categories, modalities, languages, size_categories, license, last_modified.
 - **Deferred**: LLM card summaries (Haiku) and LLM-extracted structured fields. Topic naming via Claude Sonnet is included from day one.
 
