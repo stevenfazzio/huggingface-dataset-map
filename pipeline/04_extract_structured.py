@@ -42,7 +42,33 @@ is mostly wasted spend.
    schemas, CoNLL-U, entity-relation, graph, key-value), add those slugs.
    This is the single largest quality issue in the LLM fields today.
 
-Doing #1+#2+#3 together roughly doubles the value per $30 rerun vs just #1.
+4. ADD `rag-evaluation` SLUG to `subject_domain`. Surfaced by the EVoC
+   taxonomy-gap analysis in `experiments/taxonomy_gap_analysis.py` as the
+   #1 genuine gap (33 datasets, nearest-slug distance 0.580 — clearly
+   separated from combination-level clusters and author-family noise).
+   Proposed description: "Retrieval-augmented generation benchmarks and
+   evaluation datasets: questions paired with documents to retrieve/ground
+   answers in. Distinct from instruction-and-chat (which is open-ended) and
+   question-answering (which doesn't imply a retrieval step)."
+   Evidence: `data/experiments/taxonomy_gap_analysis/report.html`.
+
+5. DEDUPLICATE `format_convention=multi-turn-chat` vs
+   `special_characteristics=multi-turn`. Orthogonality analysis found
+   these with sim=0.708 — the highest non-expected cross-field similarity.
+   They describe the same concept from two axes. Two resolution options:
+   (a) Remove `multi-turn-chat` from format_convention and let the chat-
+       shape distinction be carried by `sharegpt` vs `prompt-completion`
+       vs `alpaca`. `multi-turn` in special_characteristics becomes the
+       sole carrier of "has 3+ turns."
+   (b) Rename `multi-turn-chat` to something structural like
+       `chat-openai-format` to clarify it's about schema shape (role/content
+       JSON) vs conversation length.
+   (a) is simpler; (b) preserves the format-shape axis. The 26 cards
+   currently tagged `multi-turn-chat` in format_convention would move to
+   `other` or a more specific slug under (a), or get renamed under (b).
+
+Doing #1+#2+#3+#4+#5 together roughly triples the value per $30 rerun vs
+just #1.
 
 Related:
 - `pipeline/05_visualize.py` coerces invalid slugs to 'other' for rendering,
