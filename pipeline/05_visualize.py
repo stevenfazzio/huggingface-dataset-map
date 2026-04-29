@@ -24,7 +24,7 @@ from config import (
 from matplotlib import colormaps as mpl_colormaps
 from matplotlib.colors import to_hex
 
-FILTER_PANEL_HTML = Path(__file__).resolve().parent.parent / "docs" / "filter_panel.html"
+FILTER_PANEL_HTML = Path(__file__).resolve().parent / "filter_panel.html"
 
 
 def _first_or_other(series: pd.Series, fallback: str = "Other") -> np.ndarray:
