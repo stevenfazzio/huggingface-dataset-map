@@ -343,11 +343,12 @@ CUSTOM_JS = """
 datamap.deckgl.setProps({controller: {scrollZoom: {speed: 0.05, smooth: true}}});
 """
 
-# Title styling: bolder weight, tighter kerning, and a looser line-height so
+# Title styling: semibold weight, tighter kerning, and a looser line-height so
 # the title's descenders don't crash into the subtitle below (DataMapPlot's
 # default line-height is 0.95, which clips descenders on a 48px display title).
+# Real designed weight 600 is loaded via a font-link upgrade in _inject_nav.
 CUSTOM_CSS = """
-#main-title { font-weight: 700 !important; letter-spacing: -0.02em; line-height: 1.1 !important; }
+#main-title { font-weight: 600 !important; letter-spacing: -0.02em; line-height: 1.1 !important; }
 """
 
 
@@ -579,7 +580,6 @@ def main():
         sub_title=f"Top {len(df):,} datasets positioned by semantic similarity of their cards",
         enable_search=True,
         font_family="IBM Plex Sans",
-        font_weight=700,
         colormap_rawdata=rawdata,
         colormap_metadata=metadata,
         custom_js=CUSTOM_JS,
@@ -716,6 +716,15 @@ def _inject_nav(html_path: Path) -> None:
     html = html.replace(
         "</head>",
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n</head>',
+        1,
+    )
+
+    # Upgrade DataMapPlot's default IBM Plex Sans link (weight 400 only) to
+    # also load weight 600 so the title renders at a real designed weight
+    # rather than synthesized faux-bold from 400.
+    html = html.replace(
+        "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans&display=swap",
+        "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap",
         1,
     )
 
