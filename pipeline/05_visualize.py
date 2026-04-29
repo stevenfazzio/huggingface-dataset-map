@@ -338,6 +338,13 @@ HOVER_TEMPLATE = (
 )
 
 
+# Injected at render time. DataMapPlot's default scroll-zoom speed (0.01) is
+# sluggish for large 2D maps; bump to 0.05 with smooth interpolation.
+CUSTOM_JS = """
+datamap.deckgl.setProps({controller: {scrollZoom: {speed: 0.05, smooth: true}}});
+"""
+
+
 def main():
     df = pd.read_parquet(DATASETS_PARQUET)
     coords = np.load(UMAP_COORDS_NPZ)["coords"]
@@ -562,6 +569,7 @@ def main():
         font_family="IBM Plex Sans",
         colormap_rawdata=rawdata,
         colormap_metadata=metadata,
+        custom_js=CUSTOM_JS,
     )
     plot.save(str(MAP_HTML))
     print(f"Wrote {MAP_HTML}")
