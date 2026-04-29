@@ -14,9 +14,11 @@ import numpy as np
 import pandas as pd
 from config import (
     DATASETS_PARQUET,
+    DOCS_INDEX_HTML,
     EMBEDDINGS_NPZ,
     LABELS_PARQUET,
     MAP_HTML,
+    METHODOLOGY_HTML,
     STRUCTURED_FIELDS_PARQUET,
     SUMMARIES_PARQUET,
     UMAP_COORDS_NPZ,
@@ -25,6 +27,9 @@ from matplotlib import colormaps as mpl_colormaps
 from matplotlib.colors import to_hex
 
 FILTER_PANEL_HTML = Path(__file__).resolve().parent / "filter_panel.html"
+# docs/methodology.html is the hand-authored source for the methodology page.
+# _write_methodology() reads it and writes an adjusted copy to data/.
+METHODOLOGY_SOURCE_HTML = Path(__file__).resolve().parent.parent / "docs" / "methodology.html"
 
 
 def _first_or_other(series: pd.Series, fallback: str = "Other") -> np.ndarray:
@@ -580,6 +585,174 @@ def main():
     )
     _inject_filters(MAP_HTML, filter_config)
     print(f"Injected filter panel into {MAP_HTML}")
+
+    _inject_nav(MAP_HTML)
+    print(f"Injected navigation bar into {MAP_HTML}")
+
+    _inject_map_data_date(MAP_HTML)
+    print(f"Injected data-date badge into {MAP_HTML}")
+
+    _write_methodology(METHODOLOGY_HTML)
+    print(f"Saved methodology page to {METHODOLOGY_HTML}")
+
+    _write_methodology_docs()
+    print("Updated docs/methodology.html with data date")
+
+    _copy_for_docs(MAP_HTML, DOCS_INDEX_HTML)
+    print(f"Saved docs/ copy of map to {DOCS_INDEX_HTML}")
+
+
+# ── Nav bar, methodology, and data-date injection ────────────────────────────
+
+
+def _data_as_of_date():
+    """Return 'Month YYYY' string from DATASETS_PARQUET mtime, or None."""
+    try:
+        mtime = DATASETS_PARQUET.stat().st_mtime
+        return datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%B %Y")
+    except OSError:
+        return None
+
+
+def _inject_data_date(html: str) -> str:
+    """Fill the data-date slot with current parquet mtime.
+
+    Idempotent: handles both the original `<!-- DATA_AS_OF -->` placeholder and a
+    previously-rendered `<p class="data-date">...</p>` paragraph, so re-running
+    visualize updates the date even if the placeholder has already been replaced.
+    """
+    date_str = _data_as_of_date()
+    if not date_str:
+        return html.replace("<!-- DATA_AS_OF -->", "")
+    paragraph = f'<p class="data-date">Data as of {date_str}</p>'
+    if "<!-- DATA_AS_OF -->" in html:
+        return html.replace("<!-- DATA_AS_OF -->", paragraph)
+    return re.sub(
+        r'<p\s+class="data-date">[^<]*</p>',
+        paragraph,
+        html,
+        count=1,
+    )
+
+
+def _inject_map_data_date(html_path: Path) -> None:
+    """Add a styled data-date badge below the subtitle in the map HTML."""
+    date_str = _data_as_of_date()
+    if not date_str:
+        return
+
+    badge_html = (
+        '<br /><span id="data-date-badge" style="'
+        "display: inline-block;"
+        "margin-top: 8px;"
+        "padding: 3px 10px;"
+        "font-family: 'IBM Plex Sans', sans-serif;"
+        "font-size: 11px;"
+        "font-weight: 500;"
+        "letter-spacing: 0.04em;"
+        "text-transform: uppercase;"
+        "color: #636c76;"
+        "background: rgba(99, 108, 118, 0.08);"
+        "border: 1px solid rgba(99, 108, 118, 0.15);"
+        "border-radius: 12px;"
+        f'">{date_str}</span>'
+    )
+
+    path = Path(html_path)
+    html = path.read_text()
+    html = re.sub(
+        r'(<div\s+id="title-container"[^>]*>.*?)(</div>)',
+        rf"\1{badge_html}\2",
+        html,
+        count=1,
+        flags=re.DOTALL,
+    )
+    path.write_text(html)
+
+
+def _inject_nav(html_path: Path) -> None:
+    """Add the site-nav bar to the DataMapPlot-generated HTML."""
+    html = Path(html_path).read_text()
+
+    nav_css = """<style>
+.site-nav{position:fixed;top:0;left:0;right:0;z-index:200;
+  background:rgba(255,255,255,0.85);backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px);border-bottom:1px solid #e0e0e0;
+  padding:0 24px;height:44px;display:flex;align-items:center;gap:24px;
+  font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:14px;font-weight:500;pointer-events:auto;}
+.site-nav a{color:#333;text-decoration:none;transition:color 0.15s;}
+.site-nav a:hover{color:#0d9488;}
+.site-nav a.active{color:#0d9488;border-bottom:2px solid #0d9488;line-height:42px;}
+</style>"""
+
+    nav_html = """<nav class="site-nav">
+  <a href="huggingface_dataset_map.html" class="active">Visualization</a>
+  <a href="methodology.html">Methodology</a>
+</nav>"""
+
+    # Inject viewport meta for proper mobile rendering
+    html = html.replace(
+        "</head>",
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n</head>',
+        1,
+    )
+
+    # Inject nav bar after <body>
+    html = html.replace("<body>", f"<body>{nav_css}{nav_html}", 1)
+
+    # Offset the fixed deck-container below the nav bar
+    html = html.replace(
+        "position: fixed; z-index: -1; top: 0; left: 0; width: 100%; height: 100%;",
+        "position: fixed; z-index: -1; top: 44px; left: 0; width: 100%; height: calc(100% - 44px);",
+        1,
+    )
+
+    # Shrink body and content to account for nav bar height
+    html = html.replace(
+        "overflow: hidden;",
+        "overflow: hidden; padding-top: 44px; height: calc(100vh - 44px);",
+        1,
+    )
+    html = html.replace(
+        "height: 100vh;",
+        "height: calc(100vh - 44px);",
+        1,
+    )
+    # Adjust content-wrapper min-height so bottom-left stays in viewport
+    html = html.replace(
+        "min-height:calc(100vh - 16px)",
+        "min-height:calc(100vh - 60px)",
+        1,
+    )
+
+    Path(html_path).write_text(html)
+
+
+def _copy_for_docs(src_html_path: Path, dest_html_path: Path) -> None:
+    """Copy the map HTML to docs/, rewriting nav links for GitHub Pages."""
+    html = Path(src_html_path).read_text()
+    html = html.replace('href="huggingface_dataset_map.html"', 'href="index.html"')
+    Path(dest_html_path).write_text(html)
+
+
+def _write_methodology(output_path: Path) -> None:
+    """Write a data/ copy of the methodology page with nav links adjusted for local use.
+
+    The source of truth is docs/methodology.html (uses href="index.html" for GitHub Pages).
+    This function reads that source and writes a copy with href pointing at the local
+    map filename.
+    """
+    html = METHODOLOGY_SOURCE_HTML.read_text()
+    html = html.replace('href="index.html"', 'href="huggingface_dataset_map.html"')
+    html = _inject_data_date(html)
+    Path(output_path).write_text(html)
+
+
+def _write_methodology_docs() -> None:
+    """Write docs/methodology.html with the data date filled in (keeps index.html links)."""
+    html = METHODOLOGY_SOURCE_HTML.read_text()
+    html = _inject_data_date(html)
+    METHODOLOGY_SOURCE_HTML.write_text(html)
 
 
 # ── Filter panel injection ───────────────────────────────────────────────────

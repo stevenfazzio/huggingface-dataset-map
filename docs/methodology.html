@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta property="og:title" content="Methodology &mdash; Semantic Map of HuggingFace Datasets">
+<meta property="og:description" content="How the Semantic Map of HuggingFace Datasets is built: from Hub enumeration to interactive visualization.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://stevenfazzio.github.io/huggingface-dataset-map/methodology.html">
+<title>Methodology &mdash; Semantic Map of HuggingFace Datasets</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;700&family=IBM+Plex+Serif:wght@700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  color: #000;
+  background: #fff;
+  line-height: 1.7;
+  font-size: 16px;
+}
+.site-nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+  background: rgba(255,255,255,0.85); backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid #e0e0e0;
+  padding: 0 24px; height: 44px; display: flex; align-items: center; gap: 24px;
+  font-size: 14px; font-weight: 500; pointer-events: auto;
+}
+.site-nav a { color: #333; text-decoration: none; transition: color 0.15s; }
+.site-nav a:hover { color: #0d9488; }
+.site-nav a.active { color: #0d9488; border-bottom: 2px solid #0d9488; line-height: 42px; }
+.content { max-width: 720px; margin: 0 auto; padding: 68px 24px 80px; counter-reset: section; }
+h1, h2 { font-family: 'IBM Plex Serif', Georgia, serif; }
+h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+.subtitle { color: #555; font-size: 16px; margin-bottom: 12px; }
+.data-date { color: #777; font-size: 14px; margin-bottom: 40px; }
+h2 {
+  font-size: 20px; font-weight: 700; margin-top: 48px; margin-bottom: 16px;
+  padding-bottom: 6px; border-bottom: 1px solid #e0e0e0; scroll-margin-top: 72px;
+}
+h2::before { counter-increment: section; content: "\A7" counter(section) "\A0"; color: #0d9488; font-weight: 500; }
+h2 .anchor { color: #0d9488; text-decoration: none; opacity: 0; margin-left: 6px; font-weight: 400; font-size: 0.85em; transition: opacity 0.15s; }
+h2:hover .anchor { opacity: 1; }
+h2 .anchor:hover { text-decoration: underline; }
+h3 { font-size: 16px; font-weight: 700; margin-top: 24px; margin-bottom: 8px; }
+p { margin-bottom: 16px; }
+a { color: #0d9488; text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin-bottom: 16px; padding-left: 24px; }
+li { margin-bottom: 6px; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 15px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #e0e0e0; }
+th { font-weight: 500; color: #555; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+code { font-size: 14px; background: #f0fdfa; color: #134e4a; padding: 2px 6px; border-radius: 3px; }
+.pipeline-step { margin-bottom: 12px; padding-left: 16px; border-left: 3px solid #0d9488; position: relative; }
+.pipeline-step::before {
+  content: ''; position: absolute; left: -6px; top: 6px;
+  width: 9px; height: 9px; border-radius: 50%; background: #0d9488;
+}
+.pipeline-step strong { display: block; margin-bottom: 2px; }
+.pipeline-step p { margin-bottom: 0; color: #333; font-size: 15px; }
+.note { background: #f8f9fa; border-left: 3px solid #0d9488; padding: 12px 16px; margin: 16px 0; font-size: 14px; color: #333; }
+.toc { margin-bottom: 32px; padding-bottom: 16px; border-bottom: 1px solid #e0e0e0; }
+.toc ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.toc li { margin: 0; }
+.toc a { font-size: 14px; font-weight: 500; color: #555; text-decoration: none; transition: color 0.15s; }
+.toc a:hover { color: #0d9488; text-decoration: none; }
+.toc a.active { color: #0d9488; }
+pre.prompt-block {
+  background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 6px;
+  padding: 16px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;
+  font-size: 13px; line-height: 1.6; margin-bottom: 16px;
+}
+pre.prompt-block code { background: none; padding: 0; border-radius: 0; font-size: inherit; color: inherit; }
+tr.param-group td { font-weight: 700; color: #0d9488; border-bottom: 2px solid #0d9488; padding-top: 14px; }
+@media (max-width: 600px) {
+  table { font-size: 14px; }
+  #parameters + p + table thead { display: none; }
+  #parameters + p + table,
+  #parameters + p + table tbody,
+  #parameters + p + table tr,
+  #parameters + p + table td { display: block; width: 100%; }
+  #parameters + p + table tr:not(.param-group) { padding: 10px 0; border-bottom: 1px solid #e0e0e0; }
+  #parameters + p + table tr:not(.param-group) td { border-bottom: none; padding: 2px 0; }
+  #parameters + p + table tr:not(.param-group) td:first-child { font-weight: 600; }
+  #parameters + p + table tr:not(.param-group) td:nth-child(2) { color: #0d9488; }
+  #parameters + p + table tr:not(.param-group) td:last-child { font-size: 13px; color: #555; }
+  #parameters + p + table tr.param-group td { padding: 14px 0 6px; }
+}
+@media (min-width: 1100px) {
+  .content { margin-left: calc(50% - 260px); margin-right: auto; }
+  .toc { position: fixed; top: 68px; left: calc(50% - 444px); width: 160px; border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
+  .toc ul { display: block; }
+  .toc li { margin-bottom: 12px; }
+  .toc a { display: block; padding-left: 12px; border-left: 2px solid transparent; line-height: 1.4; }
+  .toc a.active { color: #0d9488; border-left-color: #0d9488; background: #f0fdfa; border-radius: 0 4px 4px 0; }
+}
+</style>
+</head>
+<body>
+<nav class="site-nav">
+  <a href="index.html">Visualization</a>
+  <a href="methodology.html" class="active">Methodology</a>
+</nav>
+<div class="content">
+
+<h1>Methodology</h1>
+<p class="subtitle">How the Semantic Map of HuggingFace Datasets is built</p>
+<p class="data-date">Data as of April 2026</p>
+
+<nav class="toc">
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#corpus-collection">Corpus Collection</a></li>
+    <li><a href="#processing-pipeline">Processing Pipeline</a></li>
+    <li><a href="#tools">Tools &amp; Technologies</a></li>
+    <li><a href="#parameters">Notable Parameters</a></li>
+    <li><a href="#prompts">LLM Prompts</a></li>
+    <li><a href="#using-the-visualization">Using the Visualization</a></li>
+    <li><a href="#field-definitions">Field Definitions</a></li>
+    <li><a href="#prior-work">Prior Work</a></li>
+    <li><a href="#acknowledgements">Acknowledgements</a></li>
+    <li><a href="#limitations">Limitations</a></li>
+    <li><a href="#about">About</a></li>
+  </ul>
+</nav>
+
+<h2 id="overview">Overview <a href="#overview" class="anchor">#</a></h2>
+<p>
+  This visualization maps the top 5,000 most-liked HuggingFace datasets onto a 2D plane,
+  positioned by the semantic similarity of their dataset cards (the README associated with
+  each repo). Datasets that describe similar content and purpose appear near each other,
+  revealing natural clusters across the open-data ecosystem.
+</p>
+<p>
+  The map is generated by a pipeline that fetches dataset metadata and cards from the
+  HuggingFace Hub, embeds the card text into high-dimensional vectors, reduces those
+  vectors to two dimensions, applies hierarchical topic labeling, augments each card
+  with LLM-extracted structured fields and short summaries, and renders an interactive
+  HTML visualization.
+</p>
+
+<svg viewBox="0 0 400 440" xmlns="http://www.w3.org/2000/svg" style="display:block;margin:24px auto 40px;max-width:380px;width:100%;font-family:'IBM Plex Sans',system-ui,sans-serif" aria-label="Pipeline flow diagram">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0d9488"/>
+    </marker>
+    <style>
+      .box { fill: #f0fdfa; stroke: #0d9488; stroke-width: 1.5; rx: 8; }
+      .box-label { fill: #134e4a; font-size: 12px; font-weight: 500; text-anchor: middle; dominant-baseline: central; }
+      .connector { stroke: #0d9488; stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+      .line { stroke: #0d9488; stroke-width: 1.5; fill: none; }
+    </style>
+  </defs>
+
+  <!-- 5K HF Datasets -->
+  <rect class="box" x="110" y="10" width="180" height="38"/>
+  <text class="box-label" x="200" y="29">5K HF Datasets</text>
+
+  <!-- arrow down to Card Text -->
+  <line class="connector" x1="200" y1="48" x2="200" y2="67"/>
+
+  <!-- Card Text -->
+  <rect class="box" x="140" y="72" width="120" height="38"/>
+  <text class="box-label" x="200" y="91">Card Text</text>
+
+  <!-- Three forks: Summarize (left), Extract (middle), Embed (right) -->
+  <path class="connector" d="M170,110 L80,128"/>
+  <path class="connector" d="M200,110 L200,128"/>
+  <path class="connector" d="M230,110 L320,128"/>
+
+  <!-- Summarize (left) -->
+  <rect class="box" x="10" y="130" width="140" height="38"/>
+  <text class="box-label" x="80" y="149">LLM Summarize</text>
+
+  <!-- Extract (middle) -->
+  <rect class="box" x="155" y="130" width="90" height="38"/>
+  <text class="box-label" x="200" y="149">LLM Extract</text>
+
+  <!-- Embed (right) -->
+  <rect class="box" x="250" y="130" width="140" height="38"/>
+  <text class="box-label" x="320" y="149">Embed (512D)</text>
+
+  <!-- Right column: Embed -> UMAP -> Cluster & Label -->
+  <line class="connector" x1="320" y1="168" x2="320" y2="187"/>
+
+  <rect class="box" x="250" y="192" width="140" height="38"/>
+  <text class="box-label" x="320" y="211">UMAP &rarr; 2D</text>
+
+  <line class="connector" x1="320" y1="230" x2="320" y2="249"/>
+
+  <rect class="box" x="250" y="254" width="140" height="38"/>
+  <text class="box-label" x="320" y="273">Cluster &amp; Label</text>
+
+  <!-- Vertical lines down to convergence (no arrow heads — arrows are at the merge below) -->
+  <line class="line" x1="80" y1="168" x2="80" y2="355"/>
+  <line class="line" x1="200" y1="168" x2="200" y2="355"/>
+  <line class="line" x1="320" y1="292" x2="320" y2="355"/>
+
+  <!-- Convergence: three arrows into Interactive Map -->
+  <path class="connector" d="M80,355 L155,378"/>
+  <path class="connector" d="M200,355 L200,378"/>
+  <path class="connector" d="M320,355 L245,378"/>
+
+  <!-- Interactive Map -->
+  <rect class="box" x="110" y="385" width="180" height="38"/>
+  <text class="box-label" x="200" y="404">Interactive Map</text>
+</svg>
+
+<h2 id="corpus-collection">Corpus Collection <a href="#corpus-collection" class="anchor">#</a></h2>
+<p>
+  The pipeline uses a single-stage enumeration: a <code>list_datasets</code> call to the
+  HuggingFace Hub API requests a generous overshoot of 6,000 dataset entries, sorted by
+  the <code>likes</code> field. Each entry's metadata (id, author, likes, downloads,
+  language, license, size category, modality, task category, last_modified, created_at)
+  is captured in the same response. README cards are then downloaded individually via
+  <code>hf_hub_download</code>, with retry-with-backoff for 429/5xx responses.
+</p>
+<p>
+  Cards shorter than 200 characters after stripping YAML frontmatter and whitespace are
+  excluded. The remaining cards are sorted by likes and the top 5,000 are kept. The
+  enumeration step is deliberately not BigQuery-style: HF Hub's <code>list_datasets</code>
+  already returns a ranked, filterable result set, so a separate candidate pre-pass is
+  unnecessary. The likes ranking surfaces a community-curated, mostly NLP-leaning slice
+  of the Hub; ranking by downloads instead pulls in vision/robotics/pipeline-plumbing
+  data with median 0 likes (the top-1K overlap between the two rankings is only ~17%).
+</p>
+<p>
+  Each card is processed by Claude Haiku in two independent passes. The first extracts
+  eight structured fields against a fixed taxonomy (subject domain, training stage,
+  format, provenance, etc.). The second writes a single-sentence (&le;25-word) TL;DR
+  summary. Both feed into hover tooltips, search, and colormap categories. The raw card
+  text &mdash; not the summaries &mdash; is what gets embedded to drive map placement.
+</p>
+
+<h2 id="processing-pipeline">Processing Pipeline <a href="#processing-pipeline" class="anchor">#</a></h2>
+
+<div class="pipeline-step">
+  <strong>0. Fetch datasets</strong>
+  <p>Calls <code>HfApi.list_datasets(sort="likes", limit=6000, full=True)</code>, then
+  downloads each card via <code>hf_hub_download</code> in parallel (8 concurrent workers,
+  retry-with-exponential-backoff on 429/5xx). Strips YAML frontmatter, drops cards under
+  200 characters, sorts by likes, keeps the top 5,000. Resumable: rerunning re-uses any
+  cards already saved in <code>data/datasets.parquet</code> unless <code>--refresh</code>
+  is passed.</p>
+</div>
+
+<div class="pipeline-step">
+  <strong>1. Embed cards</strong>
+  <p>Encodes each card (truncated to 4,000 characters) into a 512-dimensional vector
+  using Cohere's <code>embed-v4.0</code> model with
+  <code>input_type="clustering"</code>, in batches of 96.</p>
+</div>
+
+<div class="pipeline-step">
+  <strong>2. Reduce to 2D</strong>
+  <p>Applies UMAP (<code>n_neighbors=15</code>, <code>min_dist=0.05</code>,
+  <code>metric="cosine"</code>, <code>random_state=42</code>) to project the
+  512-dimensional embeddings down to 2D coordinates for map placement.</p>
+</div>
+
+<div class="pipeline-step">
+  <strong>3. Label topics</strong>
+  <p>Uses the Toponymy library for hierarchical density-based clustering
+  (<code>min_clusters=4</code>, <code>lowest_detail_level=0.5</code>,
+  <code>highest_detail_level=1.0</code>), then sends representative documents from each
+  cluster to Claude Sonnet 4 to generate human-readable topic labels at multiple levels
+  of detail. Documents passed to the labeler are composites of pretty_name, repo_id,
+  selected metadata tags, and a card excerpt (up to 2,000 characters).</p>
+</div>
+
+<div class="pipeline-step">
+  <strong>4. Extract structured fields</strong>
+  <p>Sends each card to Claude Haiku 4.5 with a system prompt assembled from
+  <code>pipeline/taxonomy.json</code>. Eight fields are extracted per card:
+  <code>provenance_method</code>, <code>subject_domain</code>,
+  <code>training_stage</code>, <code>format_convention</code>,
+  <code>special_characteristics</code>, <code>geo_scope</code>,
+  <code>upstream_models</code>, and <code>is_benchmark</code>. Each value is paired with
+  a short verbatim quote from the card. Resumable via per-repo JSON files in
+  <code>data/structured_fields_cache/</code>.</p>
+</div>
+
+<div class="pipeline-step">
+  <strong>4b. Summarize cards</strong>
+  <p>Sends each card to Claude Haiku 4.5 to produce a single-sentence (&le;25-word) TL;DR
+  summary. Independent of step 4 (different prompt, different output, different cache
+  directory). Resumable via per-repo JSON files in
+  <code>data/summaries_cache/</code>.</p>
+</div>
+
+<div class="pipeline-step">
+  <strong>5. Visualize</strong>
+  <p>Combines coordinates, topic labels, structured fields, summaries, and HF metadata
+  into an interactive HTML map using DataMapPlot, with multiple colormaps, search, hover
+  tooltips, click-to-open functionality, and an injected advanced-filters panel.</p>
+</div>
+
+<h2 id="tools">Tools &amp; Technologies <a href="#tools" class="anchor">#</a></h2>
+<table>
+  <thead>
+    <tr><th>Tool</th><th>Role</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><a href="https://huggingface.co/docs/huggingface_hub">HuggingFace Hub API</a></td><td>Dataset enumeration and card download</td></tr>
+    <tr><td><a href="https://docs.cohere.com/reference/embed">Cohere <code>embed-v4.0</code></a></td><td>Card text embedding (512 dimensions)</td></tr>
+    <tr><td><a href="https://github.com/lmcinnes/umap">UMAP</a></td><td>Dimensionality reduction from 512D to 2D</td></tr>
+    <tr><td><a href="https://github.com/TutteInstitute/toponymy">Toponymy</a></td><td>Hierarchical density-based topic labeling</td></tr>
+    <tr><td><a href="https://github.com/TutteInstitute/datamapplot">DataMapPlot</a></td><td>Interactive HTML map rendering</td></tr>
+    <tr><td><a href="https://www.anthropic.com/claude/sonnet">Claude Sonnet 4</a></td><td>Topic label generation (inside Toponymy)</td></tr>
+    <tr><td><a href="https://www.anthropic.com/claude/haiku">Claude Haiku 4.5</a></td><td>Structured-field extraction and TL;DR summarization</td></tr>
+  </tbody>
+</table>
+
+<h2 id="parameters">Notable Parameters <a href="#parameters" class="anchor">#</a></h2>
+<p>Key parameter values used across the pipeline. These are the authoritative reference; some also appear inline in the step descriptions above.</p>
+<table>
+  <thead>
+    <tr><th>Parameter</th><th>Value</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr class="param-group"><td colspan="3">Corpus (step 0)</td></tr>
+    <tr><td>Rank signal</td><td><code>likes</code></td><td>Single field passed to <code>HfApi.list_datasets(sort=...)</code></td></tr>
+    <tr><td>Target count</td><td>5,000</td><td>Final corpus size after filtering</td></tr>
+    <tr><td>Fetch overshoot</td><td>6,000</td><td>Ask for more so short-card filtering doesn't shrink below target</td></tr>
+    <tr><td>Min card length</td><td>200 chars</td><td>After YAML stripping; shorter cards excluded</td></tr>
+    <tr><td>Card truncation</td><td>4,000 chars</td><td>For embedding and storage</td></tr>
+    <tr class="param-group"><td colspan="3">Embedding (step 1)</td></tr>
+    <tr><td>Model</td><td>Cohere embed-v4.0</td><td><code>embed-v4.0</code>, <code>input_type="clustering"</code></td></tr>
+    <tr><td>Dimensions</td><td>512</td><td>Output vector size</td></tr>
+    <tr><td>Batch size</td><td>96</td><td>Cards per API call</td></tr>
+    <tr class="param-group"><td colspan="3">UMAP dimensionality reduction (step 2)</td></tr>
+    <tr><td><code>n_neighbors</code></td><td>15</td><td>Local neighborhood size</td></tr>
+    <tr><td><code>min_dist</code></td><td>0.05</td><td>Controls tightness of clusters in 2D</td></tr>
+    <tr><td>Metric</td><td><code>cosine</code></td><td>Distance metric</td></tr>
+    <tr><td><code>random_state</code></td><td>42</td><td>For reproducibility</td></tr>
+    <tr class="param-group"><td colspan="3">Topic labeling (step 3)</td></tr>
+    <tr><td>Model</td><td>Claude Sonnet 4</td><td><code>claude-sonnet-4-20250514</code></td></tr>
+    <tr><td><code>min_clusters</code></td><td>4</td><td>Toponymy clusterer minimum</td></tr>
+    <tr><td>Detail levels</td><td>0.5&ndash;1.0</td><td><code>lowest_detail_level</code> to <code>highest_detail_level</code></td></tr>
+    <tr><td>Object description</td><td>"HuggingFace dataset cards"</td><td>Passed to Toponymy LLM wrapper</td></tr>
+    <tr><td>Corpus description</td><td>"collection of the top 5,000 HuggingFace datasets ranked by likes"</td><td>Passed to Toponymy LLM wrapper</td></tr>
+    <tr class="param-group"><td colspan="3">Structured-field extraction (step 4)</td></tr>
+    <tr><td>Model</td><td>Claude Haiku 4.5</td><td><code>claude-haiku-4-5-20251001</code></td></tr>
+    <tr><td>Card truncation</td><td>6,000 chars</td><td>Per call, before sending to the model</td></tr>
+    <tr><td>Concurrency</td><td>12</td><td>Async semaphore</td></tr>
+    <tr><td>Cache control</td><td>ephemeral</td><td>System prompt is cache-tagged for prompt caching</td></tr>
+    <tr class="param-group"><td colspan="3">Card summarization (step 4b)</td></tr>
+    <tr><td>Model</td><td>Claude Haiku 4.5</td><td><code>claude-haiku-4-5-20251001</code></td></tr>
+    <tr><td>Card truncation</td><td>4,000 chars</td><td>Shorter than extract since TL;DRs come from the opening</td></tr>
+    <tr><td>Max words</td><td>25</td><td>Hard budget enforced by prompt</td></tr>
+    <tr><td>Concurrency</td><td>12</td><td>Async semaphore</td></tr>
+  </tbody>
+</table>
+
+<h2 id="prompts">LLM Prompts <a href="#prompts" class="anchor">#</a></h2>
+
+<h3>Structured-field extraction (step 4)</h3>
+<p>
+  The system prompt is assembled at runtime from <code>pipeline/taxonomy.json</code>,
+  which defines eight fields and their allowed slugs. For each field the prompt enumerates
+  the slugs and their descriptions; the user message contains the dataset id and the
+  truncated card body. The model returns a JSON object with one entry per field, where
+  each entry has both a <code>value</code> (a slug, list of slugs, or boolean) and a
+  short verbatim <code>quote</code> from the card that justified the choice. The
+  scaffold below shows the system-prompt structure; field definitions are sourced from
+  <code>pipeline/taxonomy.json</code> in the repo.
+</p>
+<pre class="prompt-block"><code>You extract constrained structured metadata from HuggingFace dataset cards.
+
+RULES:
+- For slug-valued fields, return one of the provided slugs verbatim. No paraphrases, no combined values like 'a / b'.
+- For LIST-typed fields, the `value` MUST be a JSON array even if only one item applies: `["item"]`. Never a bare string.
+- Each field captures a DIFFERENT axis. Do NOT reuse a slug from one field as the value for another field. Axis definitions: `subject_domain` = what the data is ABOUT (noun); `provenance_method` = HOW the data was created; `training_stage` = what the data is FOR in the training stack; `format_convention` = the SCHEMA SHAPE of each record; `special_characteristics` = orthogonal PROPERTIES (long-context, roleplay, multilingual-parallel, reasoning-traces, etc.). [&hellip;]
+- For each field, include `quote`: a &le;25-word verbatim span from the card that justified your choice. If silent, use the sentinel 'not_stated' for the quote.
+- Output strictly valid JSON. No prose, no markdown fences, no commentary outside the JSON object.
+
+FIELD DEFINITIONS:
+
+FIELD: provenance_method (pick EXACTLY ONE slug)
+  - human-created: Primary-source content written, recorded, or annotated by humans &hellip;
+  - web-scraped: Harvested from public web sources &hellip;
+  - llm-generated: Content produced by an LLM or generative model &hellip;
+  [&hellip; 8 more slugs &hellip;]
+
+FIELD: subject_domain (pick EXACTLY ONE slug)
+  - general-web-text, instruction-and-chat, code-and-software, math-and-reasoning,
+    scientific-research, medical-and-biomedical, natural-images-and-video,
+    generated-media, speech-and-audio, legal-and-policy, finance-and-business,
+    safety-alignment, robotics-and-embodied, 3d-and-simulation, agent-and-tool-use,
+    entertainment-and-gaming, geospatial, multi-domain, rag-evaluation, other, not_stated
+
+FIELD: training_stage (return a JSON LIST of applicable slugs &hellip;)
+  - pretraining, sft, preference, eval, domain-finetune, raw-corpus,
+    not_applicable, other, not_stated
+
+FIELD: format_convention (pick EXACTLY ONE slug)
+  - sharegpt, alpaca, preference-pairs, prompt-completion, vqa, image-caption,
+    audio-transcript, raw-text, tabular, structured-record, other, not_stated
+
+FIELD: special_characteristics (return a JSON LIST &hellip;)
+  - long-context, multi-turn, adversarial, reasoning-traces, low-resource-language,
+    multilingual-parallel, roleplay, long-form-generation
+
+FIELD: geo_scope (return a JSON LIST)
+  RULE: country/region names if explicit; ['global'] only if explicit;
+        ['not_applicable'] for content with no meaningful geography;
+        ['not_stated'] is the default if silent.
+
+FIELD: upstream_models (return a JSON LIST of raw strings)
+  RULE: Models explicitly mentioned as having generated this data
+        (e.g. 'GPT-4', 'Claude 3.5 Sonnet'). ['not_applicable'] / ['not_stated'] otherwise.
+
+FIELD: is_benchmark (return true or false)
+  RULE: true only if the dataset is explicitly intended as an evaluation benchmark.
+
+OUTPUT SHAPE (fill in values; do not change the structure):
+{
+  "provenance_method": { "value": &lt;per field rule&gt;, "quote": "&lt;&le;25-word span or sentinel&gt;" },
+  "subject_domain":    { "value": &hellip; },
+  &hellip;
+}</code></pre>
+
+<h3>Card summarization (step 4b)</h3>
+<p>
+  Each card (truncated to 4,000 characters) is sent to Claude Haiku 4.5 with the system
+  prompt below. The model returns a JSON object with a single <code>summary</code> field
+  containing one sentence of at most 25 words.
+</p>
+<pre class="prompt-block"><code>You write short, specific TL;DR summaries of HuggingFace datasets.
+
+Your summary MUST:
+- Be a single sentence of &le;25 words.
+- Describe what the dataset IS directly, using a specific noun phrase as the opening.
+- Mention what makes it distinctive: origin, scale, methodology, unique property, or source.
+- Be self-contained &mdash; a reader should understand the dataset without any other context.
+
+Your summary MUST NOT:
+- Start with "This dataset&hellip;", "A dataset of&hellip;", "This is&hellip;", or similar filler openings.
+- Exceed 25 words.
+- Be generic (e.g. "A text classification dataset" is useless &mdash; say what it classifies and why it's interesting).
+- Include marketing prose or hedging ("powerful", "comprehensive", "may be useful for&hellip;").
+
+Good example summaries:
+- "12 million YouTube Music track links auto-discovered by recursively walking 'fans might also like' suggestions from a seed of 45,000 artists."
+- "Japanese translation of LLaVA-Instruct-150K via DeepL, for Japanese vision-language instruction tuning."
+- "One million anonymized real-estate listings from Divar, Iran's largest classifieds platform, with 57 columns of price and location detail."
+- "31 English short-answer questions on communication networks, with reference answers and scored student responses for feedback-generation training."
+
+Output strictly valid JSON: {"summary": "&lt;your sentence&gt;"}. No prose, no markdown fences, nothing outside the JSON.</code></pre>
+
+<h3>Topic labeling (step 3)</h3>
+<p>
+  Topic labels are generated by the <a href="https://github.com/TutteInstitute/toponymy">Toponymy</a>
+  library, which constructs its own LLM prompts internally. The pipeline configures Toponymy with
+  values that shape those prompts: the <code>object_description</code> is set to
+  "HuggingFace dataset cards" and the <code>corpus_description</code> to "collection of
+  the top 5,000 HuggingFace datasets ranked by likes". Exemplar documents are delimited with
+  triple-quoted Python docstring markers (<code>&nbsp;&nbsp;&nbsp;&nbsp;* """&hellip;"""</code>).
+  Toponymy generates labels at detail levels between 0.5 and 1.0, with the number of
+  hierarchical layers determined automatically by the clustering algorithm
+  (<code>min_clusters=4</code>). Claude Sonnet 4 serves as the LLM backend for generating
+  human-readable topic names.
+</p>
+
+<h2 id="using-the-visualization">Using the Visualization <a href="#using-the-visualization" class="anchor">#</a></h2>
+<ul>
+  <li><strong>Pan and zoom:</strong> Click and drag to pan; scroll to zoom in and out.</li>
+  <li><strong>Hover:</strong> Hover over any point to see the dataset id, an LLM-written
+  TL;DR summary, popularity stats (likes, downloads, size), the LLM-extracted subject
+  pill, and a 2-column grid of metadata (role, task, training stage, modality, language,
+  provenance, format) with license and last-modified date in the footer.</li>
+  <li><strong>Click:</strong> Click any point to open the dataset on huggingface.co in a new tab.</li>
+  <li><strong>Search:</strong> Use the search box to find specific datasets by id,
+  summary text, or any of the bucketed taxonomy fields.</li>
+  <li><strong>Filter panel:</strong> Open the sidebar to narrow the visible points with
+  range sliders (likes, downloads, created year, days since modified) and checkbox filters
+  (task category, modality, license, size, language, subject domain, provenance, training
+  stage, format convention, role).</li>
+  <li><strong>Colormaps:</strong> Switch between colormaps using the dropdown to color
+  points by HuggingFace-reported metadata (task, modality, license, size, language, likes,
+  downloads), Toponymy topic layers, or LLM-extracted fields (subject domain, provenance,
+  training stage, format convention, role).</li>
+  <li><strong>Topic labels:</strong> Cluster labels appear on the map at multiple levels
+  of detail, from broad categories down to specific sub-topics. The number of levels is
+  chosen automatically by the labeling algorithm.</li>
+</ul>
+
+<h2 id="field-definitions">Field Definitions <a href="#field-definitions" class="anchor">#</a></h2>
+<table>
+  <thead>
+    <tr><th>Colormap</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Task Category</td><td>The first <code>task_categories</code> tag the dataset card declares (e.g. text-classification, question-answering). The top 9 are shown individually; all others are grouped as "Other".</td></tr>
+    <tr><td>Modality</td><td>The first <code>modalities</code> tag the dataset card declares (text, image, audio, video, etc.). The top 9 are shown individually; all others are grouped as "Other".</td></tr>
+    <tr><td>License</td><td>Licenses grouped into families: MIT, Apache, GPL Family, BSD, MPL, CC BY, CC ShareAlike, CC NonCommercial, CC0 / Public Domain, CC (other), ODC / ODbL, OpenRAIL, Llama License, Gemma License, Other Permissive, Other.</td></tr>
+    <tr><td>Size Category</td><td>An ordinal bucket derived from the dataset's <code>size_categories</code> tag: &lt;1K, 1K&ndash;10K, 10K&ndash;100K, 100K&ndash;1M, 1M&ndash;10M, 10M&ndash;100M, 100M&ndash;1B, 1B&ndash;10B, 10B&ndash;100B, 100B&ndash;1T, &gt;1T, Unknown.</td></tr>
+    <tr><td>Language</td><td>A single label per dataset: <strong>Multilingual</strong> if multiple languages or the multilinguality tag says so; <strong>Translation</strong> for parallel/translation corpora; otherwise the human-readable name of the single declared language. The top 9 are shown individually; all others are grouped as "Other".</td></tr>
+    <tr><td>Likes (log10)</td><td>Base-10 logarithm of the dataset's HuggingFace like count. Log scale spreads out the long tail of low-likes datasets while preserving differences among the most-liked.</td></tr>
+    <tr><td>Downloads (log10)</td><td>Base-10 logarithm of the dataset's all-time download count.</td></tr>
+    <tr><td>Subject Domain (LLM)</td><td>What the data is ABOUT, classified by Claude Haiku from a fixed taxonomy. Values include general-web-text, instruction-and-chat, code-and-software, math-and-reasoning, scientific-research, medical-and-biomedical, natural-images-and-video, generated-media, speech-and-audio, legal-and-policy, finance-and-business, safety-alignment, robotics-and-embodied, 3d-and-simulation, agent-and-tool-use, entertainment-and-gaming, geospatial, multi-domain, rag-evaluation, other, not_stated.</td></tr>
+    <tr><td>Provenance (LLM)</td><td>HOW the data was created. Values: human-created, web-scraped, sensor-recorded, llm-generated, translated, filtered-subset, remix, algorithmically-derived, mixed, other, not_stated.</td></tr>
+    <tr><td>Training Stage (LLM)</td><td>The dataset's role in the training stack. A primary stage is picked per dataset using a priority order (preference &gt; sft &gt; eval &gt; domain-finetune &gt; pretraining &gt; raw-corpus). Underlying multi-select values are preserved in the parquet and shown as a comma-joined list in hover.</td></tr>
+    <tr><td>Format Convention (LLM)</td><td>The schema shape of each record. Values: sharegpt, alpaca, preference-pairs, prompt-completion, vqa, image-caption, audio-transcript, raw-text, tabular, structured-record, other, not_stated.</td></tr>
+    <tr><td>Role: Benchmark vs Training (LLM)</td><td>Derived from the <code>is_benchmark</code> boolean: Benchmark, Training data, or Unknown.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="prior-work">Prior Work <a href="#prior-work" class="anchor">#</a></h2>
+<p>
+  A close prior example is the
+  <a href="https://lmcinnes.github.io/datamapplot_examples/arXiv/">ArXiv Data Map</a>,
+  which uses the same embed&ndash;reduce&ndash;label&ndash;render pipeline on 2.4 million
+  ArXiv papers. The pipeline structure here is the same; the differences are the corpus
+  (HF dataset cards instead of ArXiv abstracts), an additional LLM-extraction stage that
+  produces structured fields against a fixed taxonomy, and per-card LLM-written TL;DR
+  summaries.
+</p>
+<p>
+  More broadly, this project sits in a tradition of spatially mapping knowledge domains.
+  Katy B&ouml;rner's
+  <a href="https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0039464">UCSD
+  Map of Science</a>, described in
+  <a href="https://www.amazon.com/Atlas-Science-Visualizing-What-Press/dp/0262014459"><em>Atlas
+  of Science</em></a>, mapped 7.2 million scientific publications across 554
+  subdisciplines using bibliometric citation networks &mdash; an early demonstration that
+  large document corpora can be organized usefully in two dimensions.
+</p>
+<p>
+  HuggingFace's own
+  <a href="https://huggingface.co/datasets">dataset hub UI</a> is the natural baseline
+  for browsing datasets, but it is a list-and-filter interface, not a spatial one. Two
+  datasets that are conceptually neighbors (say, two Japanese-translation instruction
+  sets) might appear pages apart there while sharing the same patch on this map. The
+  map is meant as a complement, not a replacement.
+</p>
+<p>
+  A
+  <a href="https://github.com/stevenfazzio/semantic-github-map">sister project</a>
+  applies the same pipeline to the top 10,000 most-starred GitHub repositories, with a
+  different LLM-extraction taxonomy (project type, target audience) suited to source
+  repositories rather than datasets.
+</p>
+
+<h2 id="acknowledgements">Acknowledgements <a href="#acknowledgements" class="anchor">#</a></h2>
+<p>
+  Built on open-source tools from the
+  <a href="https://github.com/TutteInstitute">Tutte Institute for Mathematics and
+  Computing</a>: <a href="https://github.com/lmcinnes/umap">UMAP</a> for dimensionality
+  reduction, <a href="https://github.com/TutteInstitute/toponymy">Toponymy</a> for
+  hierarchical topic labeling, and
+  <a href="https://github.com/TutteInstitute/datamapplot">DataMapPlot</a> for interactive
+  map rendering. HuggingFace provides the underlying dataset metadata and card content
+  through the <a href="https://huggingface.co/docs/huggingface_hub">Hub API</a>.
+</p>
+
+<h2 id="limitations">Limitations <a href="#limitations" class="anchor">#</a></h2>
+<p>
+  This is <em>a</em> map of HuggingFace datasets, not <em>the</em> map. As with any
+  map, <a href="https://en.wikipedia.org/wiki/Map%E2%80%93territory_relation">the map is
+  not the territory</a>. It's a projection shaped by specific choices about what to
+  measure, how to measure it, and how to render the result. To paraphrase
+  <a href="https://en.wikipedia.org/wiki/All_models_are_wrong">George Box</a>: all models
+  are wrong, but some are useful. I think this map is useful, but it's worth
+  understanding where it falls short.
+</p>
+
+<ul>
+  <li><strong>Embedding model dependence.</strong> The embedding model is the single
+  biggest determinant of what "similarity" means on this map. Every downstream step
+  (UMAP layout, clustering, topic labels) inherits the geometry it defines. Cohere's
+  embed-v4.0 was trained on general web and document data, so it captures natural-language
+  similarity well but may underweight signals a dataset author would consider important:
+  the actual schema of the records, embedded JSON examples, or the statistical
+  distribution of labels. A different embedding model, especially a multimodal or
+  schema-aware one, could produce a meaningfully different map from the same inputs.</li>
+
+  <li><strong>Selection bias from the likes signal.</strong> The map includes only the
+  top 5,000 datasets by HuggingFace likes. Likes correlate with community visibility and
+  English-language documentation, so the corpus systematically over-represents
+  community-curated, NLP-leaning datasets and under-represents domain-specific or
+  freshly-uploaded ones. Ranking by downloads instead would surface a different
+  population (more vision/robotics/pipeline-plumbing data with median 0 likes); the
+  top-1K overlap between the two rankings is only ~17%.</li>
+
+  <li><strong>Card-driven placement.</strong> Datasets are positioned by what their card
+  <em>says</em>, not by what the data <em>contains</em>. A dataset with a sparse or
+  misleading card will be misplaced, and cards shorter than 200 characters are excluded
+  entirely. Cards are also truncated to 4,000 characters before embedding, so content
+  deeper in the file has no influence on placement.</li>
+
+  <li><strong>Dimensionality reduction artifacts.</strong> UMAP does a good job
+  preserving both local and global structure, but projecting 512 dimensions onto 2
+  inevitably loses information. Nearby points on the map genuinely have similar cards,
+  and the relative positions of clusters are broadly meaningful, but inter-cluster
+  distances should not be read as precise measurements of dissimilarity.</li>
+
+  <li><strong>LLM-generated content.</strong> The TL;DR summaries (Claude Haiku),
+  structured-field extractions (Claude Haiku), and topic labels (Claude Sonnet via
+  Toponymy) are all generated without human review. They can oversimplify, miscategorize,
+  or occasionally hallucinate details that aren't in the source card. The structured
+  fields are constrained to a fixed taxonomy that itself reflects design choices about
+  which axes to surface; some real distinctions (e.g. specific dataset families,
+  particular author lineages) are not captured by any field.</li>
+
+  <li><strong>HuggingFace metadata is uneven.</strong> Tags such as
+  <code>size_categories</code>, <code>language</code>, <code>license</code>, and
+  <code>task_categories</code> are author-supplied and often missing, ambiguous, or
+  inconsistently formatted. The colormap aggregations (e.g. license families, language
+  buckets) absorb a lot of this messiness, but a card with no tags will fall into
+  "Unknown" or "Other" buckets even when the data itself is clearly classifiable.</li>
+
+  <li><strong>Point-in-time snapshot.</strong> The map reflects a single moment. Likes,
+  downloads, card content, and even dataset existence all change over time. There's no
+  mechanism for incremental updates; regenerating the map requires rerunning the
+  pipeline.</li>
+
+  <li><strong>Proprietary tooling.</strong> There is some irony in using proprietary,
+  closed-source tools (Cohere's embedding model and Anthropic's LLMs) to build a map of
+  notable open-data projects. These choices were made for quality and convenience, but
+  they mean the pipeline can't be fully reproduced without access to commercial APIs,
+  and the embedding and labeling behavior is opaque.</li>
+</ul>
+
+<h2 id="about">About <a href="#about" class="anchor">#</a></h2>
+<ul>
+  <li><strong>Author:</strong> <a href="https://github.com/stevenfazzio">Steven Fazzio</a></li>
+  <li><strong>Source code:</strong> <a href="https://github.com/stevenfazzio/huggingface-dataset-map">stevenfazzio/huggingface-dataset-map</a></li>
+  <li><strong>Sister project:</strong> <a href="https://github.com/stevenfazzio/semantic-github-map">stevenfazzio/semantic-github-map</a> &mdash; same pipeline, applied to the top 10,000 most-starred GitHub repositories</li>
+  <li><strong>Feedback:</strong> Bug reports and feature requests are welcome. Please <a href="https://github.com/stevenfazzio/huggingface-dataset-map/issues">open an issue</a></li>
+  <li><strong>License:</strong> <a href="https://github.com/stevenfazzio/huggingface-dataset-map/blob/main/LICENSE">MIT License</a></li>
+</ul>
+
+</div>
+
+<script>
+(function() {
+  var tocLinks = document.querySelectorAll('.toc a');
+  var sections = [];
+  tocLinks.forEach(function(link) {
+    var id = link.getAttribute('href').slice(1);
+    var el = document.getElementById(id);
+    if (el) sections.push({ id: id, el: el, link: link });
+  });
+  var debounceTimer;
+  window.addEventListener('scroll', function() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function() {
+      var current = '';
+      for (var i = 0; i < sections.length; i++) {
+        if (sections[i].el.getBoundingClientRect().top < 100) current = sections[i].id;
+      }
+      tocLinks.forEach(function(link) {
+        link.classList.toggle('active', link.getAttribute('href') === '#' + current);
+      });
+    }, 50);
+  }, { passive: true });
+  tocLinks.forEach(function(link) {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      var id = this.getAttribute('href').slice(1);
+      var target = document.getElementById(id);
+      if (target) {
+        var top = target.getBoundingClientRect().top + window.pageYOffset - 68;
+        window.scrollTo({ top: top, behavior: 'smooth' });
+        history.pushState(null, '', '#' + id);
+      }
+    });
+  });
+  if (window.location.hash) {
+    var id = window.location.hash.slice(1);
+    var target = document.getElementById(id);
+    if (target) {
+      setTimeout(function() {
+        var top = target.getBoundingClientRect().top + window.pageYOffset - 68;
+        window.scrollTo({ top: top, behavior: 'smooth' });
+      }, 0);
+    }
+  }
+})();
+</script>
+</body>
+</html>

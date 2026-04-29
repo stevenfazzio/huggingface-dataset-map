@@ -24,6 +24,7 @@ SUMMARIES_PARQUET = DATA_DIR / "summaries.parquet"
 SUMMARIES_CACHE_DIR = DATA_DIR / "summaries_cache"
 TAXONOMY_JSON = Path(__file__).resolve().parent / "taxonomy.json"
 MAP_HTML = DATA_DIR / "huggingface_dataset_map.html"
+METHODOLOGY_HTML = DATA_DIR / "methodology.html"
 
 # ── Docs (GitHub Pages) ──────────────────────────────────────────────────────
 DOCS_DIR = Path("docs")
