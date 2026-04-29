@@ -64,15 +64,17 @@ Key technology choices:
 - **Target**: top **5,000** datasets ranked by `likes` (per-stage constants in `config.py`).
 - **Rank signal**: decided as `likes` based on `experiments/rank_signal_analysis.py` and `experiments/rank_signal_characterization.py`. Likes-vs-downloads top-1K overlap was only ~17%; downloads-only repos skewed toward newer vision/robotics/pipeline-plumbing data with median 0 likes, while likes-top reflects community-curated, mostly NLP datasets. Revisit if the corpus expands past ~5K, where the bottom slice (likes ~10) starts to be noise-dominated.
 - **Deferred for now**:
-  - `docs/` GitHub Pages deployment, methodology.html, filter panel, Plausible analytics.
+  - Plausible analytics on the deployed pages.
   - GitHub Actions CI.
-  - Hover-card visual redesign and field pruning — the current card has all metadata for development convenience; expect trimming and styling passes later.
+  - Social-preview image (no `docs/social-preview.png` yet, so OG cards are plain).
 - **Included**:
   - Claude Sonnet topic naming inside Toponymy (cheap per run, materially improves the map).
   - LLM-extracted structured fields (stage 04, Haiku): provenance_method, subject_domain, training_stage, format_convention, special_characteristics, geo_scope, upstream_models, is_benchmark. Schema lives in `pipeline/taxonomy.json`; iteration history is in `experiments/extract_structured_fields_v{1,2,3}.py` and `experiments/taxonomy_v3_proposed.json`.
   - LLM card summaries (stage 04b, Haiku): ≤25-word self-contained TL;DR per dataset, appears above metadata rows in the hover card. Prompt developed in `experiments/summarize_cards_v1.py` using EVoC-stratified ~150-card trial.
   - Hover card with: dataset id, likes, downloads, LLM TL;DR summary, HF metadata (task, modality, language, size, license, updated), and LLM fields (subject, stage, provenance, format, benchmark).
   - Colormaps over HF metadata (first task_category, first modality, license, size_categories, first language, log-bucketed likes, log-bucketed downloads), Toponymy topic layers, and LLM fields (subject_domain, provenance_method, training_stage primary, format_convention, is_benchmark).
+  - Advanced-filter panel injected at the top-left of the visualization, with range sliders (likes, downloads, created year, last-modified) and checkbox filters for every categorical colormap; injection logic and the `docs/filter_panel.html` template live alongside `pipeline/05_visualize.py`.
+  - GitHub Pages deployment from `/docs` on `main`. Stage 05 writes `docs/index.html` (visualization with site-nav linking to methodology) and updates `docs/methodology.html` (hand-authored source page; data-date is auto-populated from `datasets.parquet` mtime). Local previews go to `data/methodology.html` with nav links rewritten to point at the local map filename.
 
 ## Data Pipeline Rules
 

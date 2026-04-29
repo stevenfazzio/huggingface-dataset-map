@@ -17,7 +17,9 @@ python pipeline/00_fetch_datasets.py         # HF Hub list + card download → d
 python pipeline/01_embed_cards.py            # Cohere embed-v4.0 → embeddings.npz
 python pipeline/02_reduce_umap.py            # UMAP 512D → 2D → umap_coords.npz
 python pipeline/03_label_topics.py           # Toponymy + Claude Sonnet → labels.parquet
-python pipeline/04_visualize.py              # DataMapPlot HTML → huggingface_dataset_map.html
+python pipeline/04_extract_structured.py     # Claude Haiku per-card extraction → structured_fields.parquet
+python pipeline/04b_summarize_cards.py       # Claude Haiku ≤25-word TL;DRs → summaries.parquet
+python pipeline/05_visualize.py              # DataMapPlot HTML → huggingface_dataset_map.html (+ docs/index.html, docs/methodology.html)
 ```
 
 Single-stage enumeration: HuggingFace Hub's `list_datasets(sort=..., direction=-1, limit=N, full=True)` already returns ranked + filterable results, so there's no BigQuery-style pre-enumeration pass.
@@ -25,10 +27,16 @@ Single-stage enumeration: HuggingFace Hub's `list_datasets(sort=..., direction=-
 Data flows through `data/` (gitignored):
 
 ```
-datasets.parquet ──> embeddings.npz ──> umap_coords.npz ──> labels.parquet
-       │                                                            │
-       └────────────────────────────────────────────────────────────┴──> huggingface_dataset_map.html
+datasets.parquet ──> embeddings.npz ──> umap_coords.npz ──> labels.parquet ──┐
+       │                                                                     │
+       ├──> structured_fields.parquet ─────────────────────────────────────┐ │
+       │                                                                   │ │
+       └──> summaries.parquet ────────────────────────────────────────────┐│ │
+                                                                          ▼▼ ▼
+                                                         huggingface_dataset_map.html
 ```
+
+Stages 04 and 04b read only `datasets.parquet` and are independent of each other and of the embed/UMAP/topic chain. Both are resumable via per-repo JSONs in `data/structured_fields_cache/` and `data/summaries_cache/`.
 
 ## Environment Variables
 
@@ -38,14 +46,16 @@ Set in `.env`:
 |---|---|---|
 | `HF_TOKEN` | `pipeline/00_fetch_datasets.py` | HuggingFace auth (raises rate limits) |
 | `CO_API_KEY` | `pipeline/01_embed_cards.py`, `pipeline/03_label_topics.py` | Cohere embeddings |
-| `ANTHROPIC_API_KEY` | `pipeline/03_label_topics.py` | Claude Sonnet topic naming |
+| `ANTHROPIC_API_KEY` | `pipeline/03_label_topics.py` (Sonnet topic naming), `pipeline/04_extract_structured.py` (Haiku field extraction), `pipeline/04b_summarize_cards.py` (Haiku TL;DR) | Claude API |
 
 ## Current scope
 
 - **Target**: top **5,000** datasets, ranked by `likes` (see `pipeline/config.py`).
 - **Rank signal**: `likes`, chosen via `experiments/rank_signal_analysis.py` and `experiments/rank_signal_characterization.py`. Likes ranks community-curated, mostly NLP datasets; downloads also picks up a lot of vision/robotics/pipeline-plumbing data with median 0 likes (top-1K overlap between the two rankings is only ~17%).
-- **Hover card v1**: dataset id, likes, downloads, task_categories, modalities, languages, size_categories, license, last_modified.
-- **Deferred**: LLM card summaries (Haiku) and LLM-extracted structured fields. Topic naming via Claude Sonnet is included from day one.
+- **LLM augmentations** (all included): Sonnet-named topic clusters via Toponymy; Haiku-extracted structured fields against `pipeline/taxonomy.json` (provenance, subject domain, training stage, format convention, special characteristics, geo scope, upstream models, is-benchmark); Haiku-written ≤25-word TL;DR summaries.
+- **Hover card**: org/name, popularity stats (likes/downloads/size with inline bars), the LLM TL;DR, an LLM-classified subject pill, and a 2-column grid of HF metadata (task, modality, language) + LLM-extracted fields (role, stage, provenance, format), with license + last-modified in the footer.
+- **Deployment**: `docs/index.html` (the rendered map) and `docs/methodology.html` are committed to `main` and served by GitHub Pages at <https://stevenfazzio.github.io/huggingface-dataset-map/>.
+- **Deferred**: Plausible analytics, GitHub Actions CI, social-preview image.
 
 ## Technical Details
 
