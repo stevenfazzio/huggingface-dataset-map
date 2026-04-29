@@ -64,10 +64,10 @@ Key technology choices:
 - **Target**: top **5,000** datasets ranked by `likes` (per-stage constants in `config.py`).
 - **Rank signal**: decided as `likes` based on `experiments/rank_signal_analysis.py` and `experiments/rank_signal_characterization.py`. Likes-vs-downloads top-1K overlap was only ~17%; downloads-only repos skewed toward newer vision/robotics/pipeline-plumbing data with median 0 likes, while likes-top reflects community-curated, mostly NLP datasets. Revisit if the corpus expands past ~5K, where the bottom slice (likes ~10) starts to be noise-dominated.
 - **Deferred for now**:
-  - Plausible analytics on the deployed pages.
   - GitHub Actions CI.
   - Social-preview image (no `docs/social-preview.png` yet, so OG cards are plain).
 - **Included**:
+  - Plausible analytics on the deployed pages. Snippet is defined as `PLAUSIBLE_SNIPPET` in `pipeline/05_visualize.py` and injected into the rendered map by `_inject_nav` (also hand-coded into `docs/methodology.html`). Custom events: `Dataset Click` (props: `dataset`) wired into the DataMapPlot `on_click` callback; `Filter Panel Opened`, `Colormap Change` (props: `colormap`), `Filter Reset`, `Toggle Labels`, and `Search Used` are dispatched from `pipeline/filter_panel.html`. The panel includes a `window.plausible` stub so it works in local previews without analytics loaded.
   - Claude Sonnet topic naming inside Toponymy (cheap per run, materially improves the map).
   - LLM-extracted structured fields (stage 04, Haiku): provenance_method, subject_domain, training_stage, format_convention, special_characteristics, geo_scope, upstream_models, is_benchmark. Schema lives in `pipeline/taxonomy.json`; iteration history is in `experiments/extract_structured_fields_v{1,2,3}.py` and `experiments/taxonomy_v3_proposed.json`.
   - LLM card summaries (stage 04b, Haiku): ≤25-word self-contained TL;DR per dataset, appears above metadata rows in the hover card. Prompt developed in `experiments/summarize_cards_v1.py` using EVoC-stratified ~150-card trial.

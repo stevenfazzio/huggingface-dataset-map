@@ -351,6 +351,17 @@ CUSTOM_CSS = """
 #main-title { letter-spacing: -0.02em; line-height: 1.1 !important; }
 """
 
+PLAUSIBLE_SNIPPET = (
+    "<!-- Privacy-friendly analytics by Plausible -->\n"
+    '<script async src="https://plausible.io/js/pa-EUx-TYelKAb_R_pvJn9Yc.js"></script>\n'
+    "<script>\n"
+    "  window.plausible=window.plausible||function()"
+    "{(plausible.q=plausible.q||[]).push(arguments)},"
+    "plausible.init=plausible.init||function(i){plausible.o=i||{}};\n"
+    "  plausible.init()\n"
+    "</script>"
+)
+
 
 def main():
     df = pd.read_parquet(DATASETS_PARQUET)
@@ -574,7 +585,10 @@ def main():
         hover_text=df["repo_id"].tolist(),
         hover_text_html_template=HOVER_TEMPLATE,
         extra_point_data=extra_data,
-        on_click="window.open(`https://huggingface.co/datasets/{repo_id}`, `_blank`)",
+        on_click=(
+            "plausible('Dataset Click',{{props:{{dataset:`{repo_id}`}}}});"
+            "window.open(`https://huggingface.co/datasets/{repo_id}`, `_blank`)"
+        ),
         marker_size_array=marker_sizes,
         title="HuggingFace Dataset Map",
         sub_title=f"Top {len(df):,} datasets positioned by semantic similarity of their cards",
@@ -718,6 +732,9 @@ def _inject_nav(html_path: Path) -> None:
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n</head>',
         1,
     )
+
+    # Inject Plausible analytics before </head>
+    html = html.replace("</head>", PLAUSIBLE_SNIPPET + "\n</head>", 1)
 
     # Inject nav bar after <body>
     html = html.replace("<body>", f"<body>{nav_css}{nav_html}", 1)

@@ -55,7 +55,8 @@ Set in `.env`:
 - **LLM augmentations** (all included): Sonnet-named topic clusters via Toponymy; Haiku-extracted structured fields against `pipeline/taxonomy.json` (provenance, subject domain, training stage, format convention, special characteristics, geo scope, upstream models, is-benchmark); Haiku-written ≤25-word TL;DR summaries.
 - **Hover card**: org/name, popularity stats (likes/downloads/size with inline bars), the LLM TL;DR, an LLM-classified subject pill, and a 2-column grid of HF metadata (task, modality, language) + LLM-extracted fields (role, stage, provenance, format), with license + last-modified in the footer.
 - **Deployment**: `docs/index.html` (the rendered map) and `docs/methodology.html` are committed to `main` and served by GitHub Pages at <https://stevenfazzio.github.io/huggingface-dataset-map/>.
-- **Deferred**: Plausible analytics, GitHub Actions CI, social-preview image.
+- **Analytics**: Privacy-friendly Plausible tracking on the deployed pages (page views, plus events for dataset clicks, filter usage, colormap changes, search).
+- **Deferred**: GitHub Actions CI, social-preview image.
 
 ## Technical Details
 
