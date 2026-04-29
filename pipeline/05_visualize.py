@@ -3,7 +3,9 @@
 import json
 import math
 import re
+from datetime import datetime, timezone
 from html import escape
+from pathlib import Path
 
 import datamapplot
 import glasbey
@@ -21,6 +23,8 @@ from config import (
 )
 from matplotlib import colormaps as mpl_colormaps
 from matplotlib.colors import to_hex
+
+FILTER_PANEL_HTML = Path(__file__).resolve().parent.parent / "docs" / "filter_panel.html"
 
 
 def _first_or_other(series: pd.Series, fallback: str = "Other") -> np.ndarray:
@@ -277,12 +281,14 @@ _BAR = (
     "</div>"
 )
 
+
 def _meta_cell(label: str, placeholder: str) -> str:
     return (
         f'<div style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-weight:500;">'
         f'<span style="display:inline-block;width:{_LBL_HALF};color:#8b949e;font-weight:normal;">'
         f"{label}</span>{{{placeholder}}}</div>"
     )
+
 
 HOVER_TEMPLATE = (
     "<div style=\"font-family:'IBM Plex Sans',sans-serif;width:380px;padding:8px 10px;"
@@ -296,17 +302,11 @@ HOVER_TEMPLATE = (
     # Stats row: likes, downloads, size — each with label + ordinal bar.
     '<div style="font-size:11px;color:#57606a;display:flex;gap:16px;margin-bottom:10px;">'
     "<div>"
-    "<div>♥ {likes}</div>"
-    + _BAR.replace("{pct}", "{likes_pct}")
-    + "</div>"
+    "<div>♥ {likes}</div>" + _BAR.replace("{pct}", "{likes_pct}") + "</div>"
     "<div>"
-    "<div>↓ {downloads}</div>"
-    + _BAR.replace("{pct}", "{downloads_pct}")
-    + "</div>"
+    "<div>↓ {downloads}</div>" + _BAR.replace("{pct}", "{downloads_pct}") + "</div>"
     "<div>"
-    "<div>▪ {size}</div>"
-    + _BAR.replace("{pct}", "{size_pct}")
-    + "</div>"
+    "<div>▪ {size}</div>" + _BAR.replace("{pct}", "{size_pct}") + "</div>"
     "</div>"
     # TL;DR (dominant).
     '<div style="font-size:14px;line-height:1.45;margin-bottom:10px;">{summary}</div>'
@@ -439,13 +439,20 @@ def main():
     # Size ordinal bar: map bin index within SIZE_CATEGORY_ORDER to 0..100.
     size_index = {label: i for i, label in enumerate(SIZE_CATEGORY_ORDER)}
     n_bins = len(SIZE_CATEGORY_ORDER)
-    size_pct = [
-        round(100 * (size_index.get(v, 0) + 1) / n_bins, 1) for v in sizes_full
-    ]
+    size_pct = [round(100 * (size_index.get(v, 0) + 1) / n_bins, 1) for v in sizes_full]
 
     # Subject pill: tinted with the same palette the subject colormap uses.
     subject_palette = _color_mapping(subject_full)
     subject_pill_html = [_subject_pill(v, subject_palette.get(v, "#bdbdbd")) for v in subject_full]
+
+    # Numeric / temporal arrays for the range filters.
+    likes_int = df["likes"].fillna(0).astype(int).values
+    downloads_int = df["downloads"].fillna(0).astype(int).values
+    created_dt = pd.to_datetime(df["created_at"], utc=True, errors="coerce")
+    created_year_int = created_dt.dt.year.fillna(created_dt.dt.year.dropna().min()).astype(int).values
+    now_utc = datetime.now(tz=timezone.utc)
+    modified_dt = pd.to_datetime(df["last_modified"], utc=True, errors="coerce")
+    days_since_modified_int = (now_utc - modified_dt).dt.days.fillna(9999).clip(lower=0).astype(int).values
 
     extra_data = pd.DataFrame(
         {
@@ -469,6 +476,23 @@ def main():
             "stage": [_dim_cell(v) for v in stage_hover],
             "format": [_dim_cell(v) for v in format_full],
             "role": [_dim_cell(v) for v in role_full],
+            # Plain-text bucketed values for the filter panel — match the colormap
+            # legend categories so legend-clicks and checkbox-toggles stay in sync.
+            "task_filter": tasks,
+            "modality_filter": modalities,
+            "license_filter": licenses,
+            "size_filter": sizes_full,
+            "language_filter": langs,
+            "subject_filter": subject_full,
+            "provenance_filter": provenance_full,
+            "stage_filter": stage_full,
+            "format_filter": format_full,
+            "role_filter": role_full,
+            # Numeric / temporal values for the range filters (parsed as Number() in JS).
+            "likes_filter": likes_int.astype(str),
+            "downloads_filter": downloads_int.astype(str),
+            "created_year_filter": created_year_int.astype(str),
+            "days_since_modified_filter": days_since_modified_int.astype(str),
         }
     )
 
@@ -536,6 +560,200 @@ def main():
     )
     plot.save(str(MAP_HTML))
     print(f"Wrote {MAP_HTML}")
+
+    filter_config = _build_filter_config(
+        n_rows=len(df),
+        tasks=tasks,
+        modalities=modalities,
+        licenses=licenses,
+        sizes_full=sizes_full,
+        langs=langs,
+        subject_full=subject_full,
+        provenance_full=provenance_full,
+        stage_full=stage_full,
+        format_full=format_full,
+        role_full=role_full,
+        likes_int=likes_int,
+        downloads_int=downloads_int,
+        created_year_int=created_year_int,
+        days_since_modified_int=days_since_modified_int,
+    )
+    _inject_filters(MAP_HTML, filter_config)
+    print(f"Injected filter panel into {MAP_HTML}")
+
+
+# ── Filter panel injection ───────────────────────────────────────────────────
+
+
+_TAIL_LABELS = {"Other", "Unknown", "Not Stated", "not_stated", "other"}
+
+
+def _sorted_with_tail(values: np.ndarray) -> list[str]:
+    """Return unique values sorted alphabetically, with Other/Unknown/Not Stated pinned to the end."""
+    uniques = sorted({str(v) for v in values})
+    head = [v for v in uniques if v not in _TAIL_LABELS]
+    tail = [v for v in uniques if v in _TAIL_LABELS]
+    # Stable order within tail by the canonical order.
+    tail.sort(key=lambda v: ["Unknown", "Not Stated", "not_stated", "Other", "other"].index(v))
+    return head + tail
+
+
+def _ordinal_size_values(sizes_full: np.ndarray) -> list[str]:
+    """Return present size buckets in canonical ordinal order, with Unknown last."""
+    present = set(sizes_full.tolist())
+    ordered = [v for v in SIZE_CATEGORY_ORDER if v in present]
+    if "Unknown" in present:
+        ordered.append("Unknown")
+    return ordered
+
+
+def _p99_cap(arr: np.ndarray) -> int:
+    """99th-percentile cap for slider max so a long tail doesn't compress the meaningful range."""
+    return int(np.percentile(arr, 99))
+
+
+def _build_filter_config(
+    *,
+    n_rows: int,
+    tasks: np.ndarray,
+    modalities: np.ndarray,
+    licenses: np.ndarray,
+    sizes_full: np.ndarray,
+    langs: np.ndarray,
+    subject_full: np.ndarray,
+    provenance_full: np.ndarray,
+    stage_full: np.ndarray,
+    format_full: np.ndarray,
+    role_full: np.ndarray,
+    likes_int: np.ndarray,
+    downloads_int: np.ndarray,
+    created_year_int: np.ndarray,
+    days_since_modified_int: np.ndarray,
+) -> dict:
+    return {
+        "totalCount": int(n_rows),
+        "tasks": _sorted_with_tail(tasks),
+        "modalities": _sorted_with_tail(modalities),
+        "licenses": _sorted_with_tail(licenses),
+        "sizes": _ordinal_size_values(sizes_full),
+        "languages": _sorted_with_tail(langs),
+        "subjects": _sorted_with_tail(subject_full),
+        "provenances": _sorted_with_tail(provenance_full),
+        "stages": _sorted_with_tail(stage_full),
+        "formats": _sorted_with_tail(format_full),
+        "roles": ["Training data", "Benchmark", "Unknown"],
+        "ranges": {
+            "created_year": {
+                "min": int(created_year_int.min()),
+                "max": int(created_year_int.max()),
+                "sliderMax": int(created_year_int.max()),
+            },
+            "days_since_modified": {
+                "min": 0,
+                "max": int(days_since_modified_int.max()),
+                "sliderMax": _p99_cap(days_since_modified_int),
+            },
+            "likes": {
+                "min": int(likes_int.min()),
+                "max": int(likes_int.max()),
+                "sliderMax": _p99_cap(likes_int),
+            },
+            "downloads": {
+                "min": int(downloads_int.min()),
+                "max": int(downloads_int.max()),
+                "sliderMax": _p99_cap(downloads_int),
+            },
+        },
+        "colormapFieldToFilterId": {
+            "task": "filter-task",
+            "modality": "filter-modality",
+            "license": "filter-license",
+            "size": "filter-size",
+            "language": "filter-language",
+            "subject": "filter-subject",
+            "provenance": "filter-provenance",
+            "stage": "filter-stage",
+            "format": "filter-format",
+            "role": "filter-role",
+        },
+        "filterIdToColormapField": {
+            "filter-task": "task",
+            "filter-modality": "modality",
+            "filter-license": "license",
+            "filter-size": "size",
+            "filter-language": "language",
+            "filter-subject": "subject",
+            "filter-provenance": "provenance",
+            "filter-stage": "stage",
+            "filter-format": "format",
+            "filter-role": "role",
+        },
+    }
+
+
+def _inject_filters(html_path: Path, filter_config: dict) -> None:
+    """Inject the advanced-filter panel CSS/HTML/JS into a DataMapPlot HTML output."""
+    html = Path(html_path).read_text()
+
+    # 1. Build the search index client-side (avoid shipping a pre-concatenated blob)
+    #    and dispatch datamapReady so the filter panel can initialize. Matches the
+    #    pattern used by the sister GitHub-map project's filter injection.
+    build_search_js = (
+        r"// Build search index client-side from existing metadata fields\n"
+        r"          (function() {\n"
+        r"            var md = datamap.metaData, n = md.repo_id.length;\n"
+        r"            var sa = new Array(n);\n"
+        r"            for (var i = 0; i < n; i++) {\n"
+        r"              sa[i] = (md.repo_id[i] + ' ' + md.summary[i] + ' '"
+        r" + md.task_filter[i] + ' ' + md.modality_filter[i] + ' '"
+        r" + md.language_filter[i] + ' ' + md.subject_filter[i]).toLowerCase();\n"
+        r"            }\n"
+        r"            datamap.searchArray = sa;\n"
+        r"          })();\n"
+        r"          "
+    )
+    html = re.sub(
+        r"(updateProgressBar\('meta-data-progress', 100\);\s*)(checkAllDataLoaded\(\);)",
+        r"\1" + build_search_js + r"window.dispatchEvent(new CustomEvent('datamapReady', "
+        r"{ detail: { datamap, hoverData } }));\n          \2",
+        html,
+        count=1,
+    )
+
+    # 2. Read the template and split by section markers.
+    template = FILTER_PANEL_HTML.read_text()
+    sections = re.split(r"<!-- SECTION: (\w+) -->", template)
+    section_map = {}
+    for i in range(1, len(sections), 2):
+        section_map[sections[i]] = sections[i + 1].strip()
+
+    # 3. Inject the filter config into the JS section.
+    js_section = section_map["js"].replace("__FILTER_CONFIG_JSON__", json.dumps(filter_config))
+
+    # 4. Inject CSS before </head>.
+    html = html.replace("</head>", section_map["css"] + "\n</head>", 1)
+
+    # 5. Inject filter HTML after the search-container div.
+    search_pattern = re.compile(
+        r'(<div id="search-container" class="container-box[^"]*">\s*'
+        r"<input[^/]*/>\s*</div>)"
+    )
+    match = search_pattern.search(html)
+    if match:
+        insert_pos = match.end()
+        html = html[:insert_pos] + "\n      " + section_map["html"] + "\n" + html[insert_pos:]
+    else:
+        # Fallback: place inside .stack.top-left if search-container layout differs.
+        html = html.replace(
+            '<div class="stack top-left">',
+            '<div class="stack top-left">\n      ' + section_map["html"],
+            1,
+        )
+
+    # 6. Inject filter JS before </html>.
+    html = html.replace("</html>", js_section + "\n</html>", 1)
+
+    Path(html_path).write_text(html)
 
 
 if __name__ == "__main__":
