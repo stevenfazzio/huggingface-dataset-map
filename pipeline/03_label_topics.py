@@ -63,7 +63,7 @@ def main():
         text_embedding_model=embedder,
         clusterer=clusterer,
         object_description="HuggingFace dataset cards",
-        corpus_description="collection of the top 1,000 HuggingFace datasets ranked by likes",
+        corpus_description="collection of the top 5,000 HuggingFace datasets ranked by likes",
         exemplar_delimiters=['    * """', '"""\n'],
         lowest_detail_level=0.5,
         highest_detail_level=1.0,
