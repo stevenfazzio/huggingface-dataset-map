@@ -1,7 +1,6 @@
 """Render an interactive DataMapPlot HTML map of HuggingFace datasets."""
 
 import json
-import math
 import re
 from datetime import datetime, timezone
 from html import escape
@@ -560,7 +559,13 @@ def main():
         _cat("role", "Role: Benchmark vs Training (LLM)", role_full),
     ]
 
-    marker_size = max(3.0, min(10.0, 400.0 / math.sqrt(len(df))))
+    # Marker sizes scale with log10(likes), normalized to [3, 18]px. log10
+    # gives better spread than sqrt on HF's compressed likes distribution
+    # (top ~10K likes vs median ~30); sqrt would leave the bulk near the floor.
+    likes_for_size = df["likes"].fillna(0).astype(float).values
+    marker_sizes = np.log10(np.maximum(likes_for_size, 1))
+    denom = (marker_sizes.max() - marker_sizes.min()) or 1.0
+    marker_sizes = 3 + 15 * (marker_sizes - marker_sizes.min()) / denom
 
     plot = datamapplot.create_interactive_plot(
         coords,
@@ -569,7 +574,7 @@ def main():
         hover_text_html_template=HOVER_TEMPLATE,
         extra_point_data=extra_data,
         on_click="window.open(`https://huggingface.co/datasets/{repo_id}`, `_blank`)",
-        marker_size_array=np.full(len(df), marker_size),
+        marker_size_array=marker_sizes,
         title="HuggingFace Dataset Map",
         sub_title=f"Top {len(df):,} datasets positioned by semantic similarity of their cards",
         enable_search=True,
