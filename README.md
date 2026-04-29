@@ -1,5 +1,7 @@
 # Semantic Map of HuggingFace Datasets
 
+**[View the live map](https://stevenfazzio.github.io/huggingface-dataset-map/)**
+
 An interactive 2D map of the top HuggingFace datasets, positioned by semantic similarity of their dataset cards.
 
 The pipeline enumerates the top-ranked datasets directly from the HuggingFace Hub, downloads each card, embeds them with Cohere, reduces to 2D with UMAP, generates hierarchical topic labels with Toponymy + Claude Sonnet, and renders an interactive HTML visualization with DataMapPlot.
