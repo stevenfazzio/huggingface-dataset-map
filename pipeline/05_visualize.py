@@ -235,20 +235,99 @@ def _load_allowed_slugs() -> dict[str, set[str]]:
     }
 
 
-HOVER_TEMPLATE = (
-    "<div style=\"font-family:'IBM Plex Sans',sans-serif;max-width:380px;padding:6px 2px;\">"
-    '<div style="font-weight:600;font-size:13px;color:#1f2328;margin-bottom:4px;">{repo_id}</div>'
-    '<div style="font-size:11.5px;color:#57606a;margin-bottom:6px;">♥ {likes} &nbsp;·&nbsp; ↓ {downloads}</div>'
-    '<div style="font-size:12px;color:#1f2328;line-height:1.4;margin-bottom:8px;font-style:italic;">{summary}</div>'
-    '<div style="font-size:11.5px;color:#3d4752;line-height:1.45;">'
-    "<div><b>task:</b> {task} &nbsp;·&nbsp; <b>modality:</b> {modality}</div>"
-    "<div><b>language:</b> {language} &nbsp;·&nbsp; <b>size:</b> {size}</div>"
-    "<div><b>license:</b> {license} &nbsp;·&nbsp; <b>updated:</b> {updated}</div>"
-    '<div style="margin-top:4px;border-top:1px solid #eaeef2;padding-top:4px;">'
-    "<div><b>subject:</b> {subject} &nbsp;·&nbsp; <b>stage:</b> {stage}</div>"
-    "<div><b>provenance:</b> {provenance} &nbsp;·&nbsp; <b>format:</b> {format}</div>"
-    "<div><b>benchmark:</b> {benchmark}</div>"
+_UNKNOWN_VALUES = {"", "Unknown", "Other", "Not Stated", "not_stated", "other"}
+
+
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha:.2f})"
+
+
+def _dim_cell(value: str) -> str:
+    """Render a taxonomy/metadata value; muted gray if it's an unknown/default sentinel."""
+    raw = (value or "").strip()
+    v = escape(raw)
+    if raw in _UNKNOWN_VALUES:
+        return f'<span style="color:#a3a9b2;font-weight:normal;">{v or "—"}</span>'
+    return v
+
+
+def _subject_pill(value: str, hex_color: str) -> str:
+    """Tinted pill for the subject_domain value, using the subject colormap's palette."""
+    raw = (value or "").strip()
+    v = escape(raw)
+    if raw in _UNKNOWN_VALUES:
+        return (
+            '<span style="background:#f1f3f5;color:#a3a9b2;padding:1px 8px;'
+            f'border-radius:10px;font-size:11px;">{v or "—"}</span>'
+        )
+    bg = _hex_to_rgba(hex_color, 0.30)
+    return (
+        f'<span style="background:{bg};color:#1f2328;padding:1px 8px;'
+        f'border-radius:10px;font-size:11px;font-weight:500;">{v}</span>'
+    )
+
+
+# Fixed-width card; TL;DR dominant; one tinted pill (subject); stats row with bars; 2-col metadata.
+_LBL_HALF = "64px"
+_BAR = (
+    '<div style="background:#eaeef2;height:2px;width:60px;margin-top:3px;border-radius:1px;">'
+    '<div style="background:#b0b6be;height:100%;width:{pct}%;border-radius:1px;"></div>'
     "</div>"
+)
+
+def _meta_cell(label: str, placeholder: str) -> str:
+    return (
+        f'<div style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-weight:500;">'
+        f'<span style="display:inline-block;width:{_LBL_HALF};color:#8b949e;font-weight:normal;">'
+        f"{label}</span>{{{placeholder}}}</div>"
+    )
+
+HOVER_TEMPLATE = (
+    "<div style=\"font-family:'IBM Plex Sans',sans-serif;width:380px;padding:8px 10px;"
+    'box-sizing:border-box;color:#1f2328;">'
+    # Title: org muted, name bold.
+    '<div style="font-size:13px;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;'
+    'white-space:nowrap;">'
+    '<span style="color:#8b949e;">{repo_org}</span>'
+    '<span style="font-weight:600;">{repo_name}</span>'
+    "</div>"
+    # Stats row: likes, downloads, size — each with label + ordinal bar.
+    '<div style="font-size:11px;color:#57606a;display:flex;gap:16px;margin-bottom:10px;">'
+    "<div>"
+    "<div>♥ {likes}</div>"
+    + _BAR.replace("{pct}", "{likes_pct}")
+    + "</div>"
+    "<div>"
+    "<div>↓ {downloads}</div>"
+    + _BAR.replace("{pct}", "{downloads_pct}")
+    + "</div>"
+    "<div>"
+    "<div>▪ {size}</div>"
+    + _BAR.replace("{pct}", "{size_pct}")
+    + "</div>"
+    "</div>"
+    # TL;DR (dominant).
+    '<div style="font-size:14px;line-height:1.45;margin-bottom:10px;">{summary}</div>'
+    # Subject: standalone tinted pill (label implied by its unique visual treatment).
+    '<div style="font-size:11.5px;line-height:1.4;margin-bottom:2px;">'
+    "{subject_pill}"
+    "</div>"
+    # Remaining metadata: 2-column grid.
+    '<div style="font-size:11.5px;line-height:1.9;margin-bottom:8px;'
+    'display:grid;grid-template-columns:1fr 1fr;gap:0 20px;">'
+    + _meta_cell("Role", "role")
+    + _meta_cell("Task", "task")
+    + _meta_cell("Stage", "stage")
+    + _meta_cell("Modality", "modality")
+    + _meta_cell("Language", "language")
+    + _meta_cell("Provenance", "provenance")
+    + _meta_cell("Format", "format")
+    + "</div>"
+    # Admin footer: license + updated.
+    '<div style="font-size:11px;color:#8b949e;line-height:1.6;">'
+    "⚖ {license} &nbsp;·&nbsp; 🕐 {updated}"
     "</div>"
     "</div>"
 )
@@ -309,8 +388,8 @@ def main():
     format_full = np.array(
         [_prettify(_slug_or(v, allowed["format_convention"], "other")) for v in df["format_convention"].values]
     )
-    benchmark_full = np.array(
-        ["Benchmark" if v is True else "Training" if v is False else "Unknown" for v in df["is_benchmark"].values]
+    role_full = np.array(
+        ["Benchmark" if v is True else "Training data" if v is False else "Unknown" for v in df["is_benchmark"].values]
     )
 
     # Joined hover string for training_stage (shows all valid stages, not just primary).
@@ -322,26 +401,74 @@ def main():
         ]
     )
 
-    # Summary: LLM TL;DR (stage 04b). Rare missing rows fall back to blank.
-    summary_hover = [(s if isinstance(s, str) and s else "") for s in df["summary"].values]
+    # Summary: LLM TL;DR (stage 04b). Rare missing rows fall back to a muted placeholder.
+    summary_hover = []
+    for s in df["summary"].values:
+        if isinstance(s, str) and s.strip():
+            summary_hover.append(escape(s))
+        else:
+            summary_hover.append('<span style="color:#a3a9b2;">Summary unavailable.</span>')
+
+    # Split repo_id into muted org + bold name. Some ids lack an org prefix.
+    repo_org, repo_name = [], []
+    for rid in df["repo_id"].astype(str).values:
+        if "/" in rid:
+            o, n = rid.split("/", 1)
+            repo_org.append(escape(o) + "/")
+            repo_name.append(escape(n))
+        else:
+            repo_org.append("")
+            repo_name.append(escape(rid))
+
+    # Log-scale percentile rank for the inline popularity bars (0..100).
+    likes_pct = (
+        pd.Series(np.log10(np.maximum(df["likes"].fillna(0).astype(float).values, 1)))
+        .rank(pct=True)
+        .mul(100)
+        .round(1)
+        .tolist()
+    )
+    downloads_pct = (
+        pd.Series(np.log10(np.maximum(df["downloads"].fillna(0).astype(float).values, 1)))
+        .rank(pct=True)
+        .mul(100)
+        .round(1)
+        .tolist()
+    )
+
+    # Size ordinal bar: map bin index within SIZE_CATEGORY_ORDER to 0..100.
+    size_index = {label: i for i, label in enumerate(SIZE_CATEGORY_ORDER)}
+    n_bins = len(SIZE_CATEGORY_ORDER)
+    size_pct = [
+        round(100 * (size_index.get(v, 0) + 1) / n_bins, 1) for v in sizes_full
+    ]
+
+    # Subject pill: tinted with the same palette the subject colormap uses.
+    subject_palette = _color_mapping(subject_full)
+    subject_pill_html = [_subject_pill(v, subject_palette.get(v, "#bdbdbd")) for v in subject_full]
 
     extra_data = pd.DataFrame(
         {
             "repo_id": df["repo_id"].values,
+            "repo_org": repo_org,
+            "repo_name": repo_name,
             "likes": [f"{int(x or 0):,}" for x in df["likes"].values],
             "downloads": [f"{int(x or 0):,}" for x in df["downloads"].values],
-            "summary": _esc(summary_hover),
-            "task": _esc(tasks_full),
-            "modality": _esc(modalities_full),
-            "language": _esc(langs_full),
+            "likes_pct": likes_pct,
+            "downloads_pct": downloads_pct,
             "size": _esc(sizes_full),
-            "license": _esc(licenses_full),
-            "updated": [(str(v) or "")[:10] for v in df["last_modified"].values],
-            "subject": _esc(subject_full),
-            "provenance": _esc(provenance_full),
-            "stage": _esc(stage_hover),
-            "format": _esc(format_full),
-            "benchmark": _esc(benchmark_full),
+            "size_pct": size_pct,
+            "summary": summary_hover,
+            "task": [_dim_cell(v) for v in tasks_full],
+            "modality": [_dim_cell(v) for v in modalities_full],
+            "language": [_dim_cell(v) for v in langs_full],
+            "license": [_dim_cell(v) for v in licenses_full],
+            "updated": [_dim_cell((str(v) or "")[:10]) for v in df["last_modified"].values],
+            "subject_pill": subject_pill_html,
+            "provenance": [_dim_cell(v) for v in provenance_full],
+            "stage": [_dim_cell(v) for v in stage_hover],
+            "format": [_dim_cell(v) for v in format_full],
+            "role": [_dim_cell(v) for v in role_full],
         }
     )
 
@@ -357,7 +484,7 @@ def main():
         provenance_full,
         stage_full,
         format_full,
-        benchmark_full,
+        role_full,
     ]
 
     def _cat(field, desc, values):
@@ -387,7 +514,7 @@ def main():
         _cat("provenance", "Provenance (LLM)", provenance_full),
         _cat("stage", "Training Stage (LLM)", stage_full),
         _cat("format", "Format Convention (LLM)", format_full),
-        _cat("benchmark", "Benchmark vs Training (LLM)", benchmark_full),
+        _cat("role", "Role: Benchmark vs Training (LLM)", role_full),
     ]
 
     marker_size = max(3.0, min(10.0, 400.0 / math.sqrt(len(df))))
