@@ -344,6 +344,13 @@ CUSTOM_JS = """
 datamap.deckgl.setProps({controller: {scrollZoom: {speed: 0.05, smooth: true}}});
 """
 
+# Title styling: bolder weight, tighter kerning, and a looser line-height so
+# the title's descenders don't crash into the subtitle below (DataMapPlot's
+# default line-height is 0.95, which clips descenders on a 48px display title).
+CUSTOM_CSS = """
+#main-title { font-weight: 700 !important; letter-spacing: -0.02em; line-height: 1.1 !important; }
+"""
+
 
 def main():
     df = pd.read_parquet(DATASETS_PARQUET)
@@ -567,9 +574,11 @@ def main():
         sub_title=f"Top {len(df):,} datasets positioned by semantic similarity of their cards",
         enable_search=True,
         font_family="IBM Plex Sans",
+        font_weight=700,
         colormap_rawdata=rawdata,
         colormap_metadata=metadata,
         custom_js=CUSTOM_JS,
+        custom_css=CUSTOM_CSS,
     )
     plot.save(str(MAP_HTML))
     print(f"Wrote {MAP_HTML}")
