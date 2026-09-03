@@ -400,7 +400,13 @@ def aggregate(taxonomy, fields) -> pd.DataFrame:
             "card_was_truncated": data.get("card_was_truncated"),
         }
         for f in fields:
-            entry = (parsed or {}).get(f) or {}
+            # A schema-violating card can return a bare scalar where the {value, quote}
+            # object belongs (seen once in 5,000: `"is_benchmark": true`). _validate
+            # already records that as `<field>:missing`; treat it as absent here too
+            # rather than crashing the whole aggregation on one malformed response.
+            entry = (parsed or {}).get(f)
+            if not isinstance(entry, dict):
+                entry = {}
             val = entry.get("value")
             row[f] = json.dumps(val, ensure_ascii=False) if isinstance(val, list) else val
             row[f"{f}_quote"] = entry.get("quote")
