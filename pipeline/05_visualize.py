@@ -295,7 +295,7 @@ def _meta_cell(label: str, placeholder: str) -> str:
 
 
 HOVER_TEMPLATE = (
-    "<div style=\"font-family:'IBM Plex Sans',sans-serif;width:380px;padding:8px 10px;"
+    "<div style=\"font-family:'IBM Plex Sans',sans-serif;width:min(380px,100%);padding:8px 10px;"
     'box-sizing:border-box;color:#1f2328;">'
     # Title: org muted, name bold.
     '<div style="font-size:13px;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;'
@@ -349,6 +349,13 @@ datamap.deckgl.setProps({controller: {scrollZoom: {speed: 0.05, smooth: true}}})
 # on a 48px display title). Weight is left at DataMapPlot's default.
 CUSTOM_CSS = """
 #main-title { letter-spacing: -0.02em; line-height: 1.1 !important; }
+/* deck.gl caps .deck-tooltip at max-width:25% of the viewport. The hover card
+   below is 380px, so below a 1520px viewport (380/0.25) the card's text spills
+   outside its own border — at 100% zoom that is any window under ~1520 CSS px.
+   Give the container room for the card; the card shrinks with it (see
+   HOVER_TEMPLATE) on genuinely narrow screens. !important also beats the
+   inline style deck.gl may set. */
+.deck-tooltip { max-width: min(420px, 92vw) !important; }
 """
 
 PLAUSIBLE_SNIPPET = (
