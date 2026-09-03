@@ -217,7 +217,7 @@ tr.param-group td { font-weight: 700; color: #0d9488; border-bottom: 2px solid #
 <h2 id="corpus-collection">Corpus Collection <a href="#corpus-collection" class="anchor">#</a></h2>
 <p>
   The pipeline uses a single-stage enumeration: a <code>list_datasets</code> call to the
-  HuggingFace Hub API requests a generous overshoot of 6,000 dataset entries, sorted by
+  HuggingFace Hub API requests a generous overshoot of 7,500 dataset entries, sorted by
   the <code>likes</code> field. Each entry's metadata (id, author, likes, downloads,
   language, license, size category, modality, task category, last_modified, created_at)
   is captured in the same response. README cards are then downloaded individually via
@@ -244,7 +244,7 @@ tr.param-group td { font-weight: 700; color: #0d9488; border-bottom: 2px solid #
 
 <div class="pipeline-step">
   <strong>0. Fetch datasets</strong>
-  <p>Calls <code>HfApi.list_datasets(sort="likes", limit=6000, full=True)</code>, then
+  <p>Calls <code>HfApi.list_datasets(sort="likes", limit=7500, full=True)</code>, then
   downloads each card via <code>hf_hub_download</code> in parallel (8 concurrent workers,
   retry-with-exponential-backoff on 429/5xx). Strips YAML frontmatter, drops cards under
   200 characters, sorts by likes, keeps the top 5,000. Resumable: rerunning re-uses any
@@ -271,7 +271,7 @@ tr.param-group td { font-weight: 700; color: #0d9488; border-bottom: 2px solid #
   <p>Uses the Toponymy library for hierarchical density-based clustering
   (<code>min_clusters=4</code>, <code>lowest_detail_level=0.5</code>,
   <code>highest_detail_level=1.0</code>), then sends representative documents from each
-  cluster to Claude Sonnet 4 to generate human-readable topic labels at multiple levels
+  cluster to Claude Sonnet 4.6 to generate human-readable topic labels at multiple levels
   of detail. Documents passed to the labeler are composites of pretty_name, repo_id,
   selected metadata tags, and a card excerpt (up to 2,000 characters).</p>
 </div>
@@ -314,7 +314,7 @@ tr.param-group td { font-weight: 700; color: #0d9488; border-bottom: 2px solid #
     <tr><td><a href="https://github.com/lmcinnes/umap">UMAP</a></td><td>Dimensionality reduction from 512D to 2D</td></tr>
     <tr><td><a href="https://github.com/TutteInstitute/toponymy">Toponymy</a></td><td>Hierarchical density-based topic labeling</td></tr>
     <tr><td><a href="https://github.com/TutteInstitute/datamapplot">DataMapPlot</a></td><td>Interactive HTML map rendering</td></tr>
-    <tr><td><a href="https://www.anthropic.com/claude/sonnet">Claude Sonnet 4</a></td><td>Topic label generation (inside Toponymy)</td></tr>
+    <tr><td><a href="https://www.anthropic.com/claude/sonnet">Claude Sonnet 4.6</a></td><td>Topic label generation (inside Toponymy)</td></tr>
     <tr><td><a href="https://www.anthropic.com/claude/haiku">Claude Haiku 4.5</a></td><td>Structured-field extraction and TL;DR summarization</td></tr>
   </tbody>
 </table>
@@ -329,7 +329,7 @@ tr.param-group td { font-weight: 700; color: #0d9488; border-bottom: 2px solid #
     <tr class="param-group"><td colspan="3">Corpus (step 0)</td></tr>
     <tr><td>Rank signal</td><td><code>likes</code></td><td>Single field passed to <code>HfApi.list_datasets(sort=...)</code></td></tr>
     <tr><td>Target count</td><td>5,000</td><td>Final corpus size after filtering</td></tr>
-    <tr><td>Fetch overshoot</td><td>6,000</td><td>Ask for more so short-card filtering doesn't shrink below target</td></tr>
+    <tr><td>Fetch overshoot</td><td>7,500</td><td>Ask for more so short-card filtering doesn't shrink below target</td></tr>
     <tr><td>Min card length</td><td>200 chars</td><td>After YAML stripping; shorter cards excluded</td></tr>
     <tr><td>Card truncation</td><td>4,000 chars</td><td>For embedding and storage</td></tr>
     <tr class="param-group"><td colspan="3">Embedding (step 1)</td></tr>
@@ -342,7 +342,7 @@ tr.param-group td { font-weight: 700; color: #0d9488; border-bottom: 2px solid #
     <tr><td>Metric</td><td><code>cosine</code></td><td>Distance metric</td></tr>
     <tr><td><code>random_state</code></td><td>42</td><td>For reproducibility</td></tr>
     <tr class="param-group"><td colspan="3">Topic labeling (step 3)</td></tr>
-    <tr><td>Model</td><td>Claude Sonnet 4</td><td><code>claude-sonnet-4-20250514</code></td></tr>
+    <tr><td>Model</td><td>Claude Sonnet 4.6</td><td><code>claude-sonnet-4-6</code></td></tr>
     <tr><td><code>min_clusters</code></td><td>4</td><td>Toponymy clusterer minimum</td></tr>
     <tr><td>Detail levels</td><td>0.5&ndash;1.0</td><td><code>lowest_detail_level</code> to <code>highest_detail_level</code></td></tr>
     <tr><td>Object description</td><td>"HuggingFace dataset cards"</td><td>Passed to Toponymy LLM wrapper</td></tr>
@@ -466,7 +466,7 @@ Output strictly valid JSON: {"summary": "&lt;your sentence&gt;"}. No prose, no m
   triple-quoted Python docstring markers (<code>&nbsp;&nbsp;&nbsp;&nbsp;* """&hellip;"""</code>).
   Toponymy generates labels at detail levels between 0.5 and 1.0, with the number of
   hierarchical layers determined automatically by the clustering algorithm
-  (<code>min_clusters=4</code>). Claude Sonnet 4 serves as the LLM backend for generating
+  (<code>min_clusters=4</code>). Claude Sonnet 4.6 serves as the LLM backend for generating
   human-readable topic names.
 </p>
 

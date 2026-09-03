@@ -45,7 +45,7 @@ def test_all_data_paths_under_data_dir():
 
 def test_constants_have_expected_values():
     assert TARGET_DATASET_COUNT == 5_000
-    assert FETCH_OVERSHOOT_COUNT == 6_000
+    assert FETCH_OVERSHOOT_COUNT == 7_500
     assert COHERE_BATCH_SIZE == 96
     assert COHERE_EMBED_DIMENSION == 512
     assert CARD_MAX_CHARS == 4_000

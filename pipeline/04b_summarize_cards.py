@@ -21,11 +21,14 @@ import tempfile
 from pathlib import Path
 
 import pandas as pd
-from anthropic import AsyncAnthropic
+from anthropic import Anthropic, AsyncAnthropic
+from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
+from batch_runner import run_batches
 from config import (
     ANTHROPIC_API_KEY,
     ANTHROPIC_MODEL_SUMMARIZE,
     DATASETS_PARQUET,
+    SUMMARIES_BATCH_JOURNAL,
     SUMMARIES_CACHE_DIR,
     SUMMARIES_PARQUET,
     SUMMARIZE_CARD_CHAR_LIMIT,
@@ -74,6 +77,9 @@ async def _extract_one(client, sem, repo_id: str, card: str) -> dict:
                 resp = await client.messages.create(
                     model=ANTHROPIC_MODEL_SUMMARIZE,
                     max_tokens=256,
+                    # NB: this prompt is ~400 tokens, well under Haiku 4.5's 4,096-token
+                    # minimum cacheable prefix, so the marker is currently inert. Kept so
+                    # caching engages for free if the prompt grows or the minimum drops.
                     system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
                     messages=[{"role": "user", "content": _build_user_message(repo_id, card)}],
                 )
@@ -107,19 +113,22 @@ def _save_result(result: dict) -> None:
         raise
 
 
-async def _run_extractions(rows: pd.DataFrame) -> None:
-    client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
-    sem = asyncio.Semaphore(SUMMARIZE_CONCURRENCY)
-
+def _pending(rows: pd.DataFrame) -> list[tuple[str, str]]:
+    """Cards with no cache file yet, in a deterministic order."""
     todo = []
     for _, row in rows.iterrows():
         cache_path = SUMMARIES_CACHE_DIR / f"{_safe_filename(row['repo_id'])}.json"
         if cache_path.exists():
             continue
         todo.append((row["repo_id"], row["card_text_clean"]))
-    print(f"{len(todo)} to summarize ({len(rows) - len(todo)} already cached)")
-    if not todo:
-        return
+    return sorted(todo)
+
+
+async def _run_extractions_live(todo: list[tuple[str, str]]) -> None:
+    """Concurrent live calls. Full price, but no batch round-trip — use it to top
+    up a handful of stragglers rather than for a full-corpus run."""
+    client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    sem = asyncio.Semaphore(SUMMARIZE_CONCURRENCY)
 
     async def _do(repo_id, card):
         res = await _extract_one(client, sem, repo_id, card)
@@ -128,6 +137,52 @@ async def _run_extractions(rows: pd.DataFrame) -> None:
     tasks = [_do(rid, c) for rid, c in todo]
     for coro in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc="summarizing"):
         await coro
+
+
+def _batch_params(repo_id: str, card: str):
+    return MessageCreateParamsNonStreaming(
+        model=ANTHROPIC_MODEL_SUMMARIZE,
+        max_tokens=256,
+        system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": _build_user_message(repo_id, card)}],
+    )
+
+
+def _run_extractions_batch(todo: list[tuple[str, str]]) -> None:
+    """Same requests at half price via the Batches API. Failures are deliberately
+    not written to the cache dir, so re-running the stage retries them."""
+    client = Anthropic(api_key=ANTHROPIC_API_KEY)
+    saved = 0
+    failures: list[str] = []
+
+    for repo_id, card, message, status in run_batches(
+        client,
+        todo,
+        _batch_params,
+        SUMMARIES_BATCH_JOURNAL,
+        label="summarize",
+    ):
+        if message is None:
+            failures.append(f"{repo_id} ({status})")
+            continue
+        raw = "".join(b.text for b in message.content if getattr(b, "type", "") == "text")
+        _save_result(
+            {
+                "repo_id": repo_id,
+                "raw_text": raw,
+                "input_tokens": message.usage.input_tokens,
+                "output_tokens": message.usage.output_tokens,
+                "cache_read_input_tokens": getattr(message.usage, "cache_read_input_tokens", 0),
+                "card_was_truncated": len(card) > SUMMARIZE_CARD_CHAR_LIMIT,
+                "error": None,
+            }
+        )
+        saved += 1
+
+    print(f"Batch summarization: {saved} saved, {len(failures)} failed")
+    if failures:
+        print(f"  first few: {failures[:5]}")
+        print("  re-run this stage to retry them")
 
 
 def _parse_summary(raw_text):
@@ -198,6 +253,16 @@ def aggregate() -> pd.DataFrame:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--aggregate-only", action="store_true")
+    parser.add_argument(
+        "--no-batch",
+        action="store_true",
+        help="Use live concurrent calls instead of the Batches API (2x the cost; no wait).",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Only process the first N pending cards. Use it to smoke-test end to end before a full run.",
+    )
     args = parser.parse_args()
 
     SUMMARIES_CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -210,7 +275,16 @@ def main():
     print(f"Corpus: {len(df)} rows with cards")
 
     if not args.aggregate_only:
-        asyncio.run(_run_extractions(df[["repo_id", "card_text_clean"]]))
+        todo = _pending(df[["repo_id", "card_text_clean"]])
+        print(f"{len(todo)} to summarize ({len(df) - len(todo)} already cached)")
+        if args.limit:
+            todo = todo[: args.limit]
+            print(f"  --limit {args.limit}: processing {len(todo)}")
+        if todo:
+            if args.no_batch:
+                asyncio.run(_run_extractions_live(todo))
+            else:
+                _run_extractions_batch(todo)
 
     aggregate()
 

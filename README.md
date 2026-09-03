@@ -24,6 +24,8 @@ python pipeline/05_visualize.py              # DataMapPlot HTML → huggingface_
 
 Single-stage enumeration: HuggingFace Hub's `list_datasets(sort=..., direction=-1, limit=N, full=True)` already returns ranked + filterable results, so there's no BigQuery-style pre-enumeration pass.
 
+Stages 04 and 04b send their per-card calls through the [Message Batches API](https://docs.claude.com/en/docs/build-with-claude/batch-processing) by default, which halves their cost; a batch may take up to 24 hours, so both stages journal their in-flight batch ids and resume rather than resubmit. Pass `--no-batch` for live concurrent calls (full price, no wait) when topping up a handful of stragglers.
+
 Data flows through `data/` (gitignored):
 
 ```
@@ -67,7 +69,7 @@ Set in `.env`:
 | Embeddings | Cohere `embed-v4.0` (512-dim, input_type=clustering) |
 | Dimensionality reduction | UMAP (n_neighbors=15, min_dist=0.05, cosine) 512D → 2D |
 | Topic clustering | [Toponymy](https://github.com/TutteInstitute/Toponymy) (hierarchical density-based) |
-| Topic naming | Claude Sonnet |
+| Topic naming | Claude Sonnet 4.6 (pinned: Toponymy 0.4.0 sends `temperature`, which Sonnet 5 rejects) |
 | Visualization | [DataMapPlot](https://github.com/TutteInstitute/DataMapPlot) |
 
 ## Development

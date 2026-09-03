@@ -31,7 +31,9 @@ import tempfile
 from pathlib import Path
 
 import pandas as pd
-from anthropic import AsyncAnthropic
+from anthropic import Anthropic, AsyncAnthropic
+from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
+from batch_runner import run_batches
 from config import (
     ANTHROPIC_API_KEY,
     ANTHROPIC_MODEL_EXTRACT,
@@ -39,11 +41,17 @@ from config import (
     EXTRACT_CARD_CHAR_LIMIT,
     EXTRACT_CONCURRENCY,
     EXTRACT_MAX_RETRIES,
+    STRUCTURED_FIELDS_BATCH_JOURNAL,
     STRUCTURED_FIELDS_CACHE_DIR,
     STRUCTURED_FIELDS_PARQUET,
     TAXONOMY_JSON,
 )
 from tqdm import tqdm
+
+# Haiku 4.5 refuses to cache a prefix shorter than this. A `cache_control` marker on a
+# shorter system prompt is ignored silently — no error, `cache_read_input_tokens` just
+# stays 0 and every card pays full input price for the whole prompt.
+HAIKU_MIN_CACHEABLE_TOKENS = 4_096
 
 
 def _safe_filename(repo_id: str) -> str:
@@ -165,19 +173,53 @@ def _save_result(result: dict) -> None:
         raise
 
 
-async def _run_extractions(rows: pd.DataFrame, system: str) -> None:
-    client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
-    sem = asyncio.Semaphore(EXTRACT_CONCURRENCY)
+def _report_cache_viability(system: str) -> None:
+    """Print whether the system prompt is long enough for prompt caching to engage.
 
+    `count_tokens` is free, so this is a cheap preflight on an otherwise silent
+    failure: the prompt sits close to the model's minimum cacheable prefix, and
+    falling under it multiplies this stage's input bill by roughly 5x.
+    """
+    client = Anthropic(api_key=ANTHROPIC_API_KEY)
+    probe = [{"role": "user", "content": "."}]
+    try:
+        with_system = client.messages.count_tokens(
+            model=ANTHROPIC_MODEL_EXTRACT,
+            system=[{"type": "text", "text": system}],
+            messages=probe,
+        )
+        baseline = client.messages.count_tokens(model=ANTHROPIC_MODEL_EXTRACT, messages=probe)
+    except Exception as e:  # noqa: BLE001 — diagnostics only, never block the run
+        print(f"Cache preflight skipped ({type(e).__name__}: {e})")
+        return
+
+    n = with_system.input_tokens - baseline.input_tokens
+    if n >= HAIKU_MIN_CACHEABLE_TOKENS:
+        print(f"System prompt: {n} tokens — clears the {HAIKU_MIN_CACHEABLE_TOKENS}-token cache minimum")
+    else:
+        print(
+            f"System prompt: {n} tokens — {HAIKU_MIN_CACHEABLE_TOKENS - n} SHORT of the "
+            f"{HAIKU_MIN_CACHEABLE_TOKENS}-token minimum for {ANTHROPIC_MODEL_EXTRACT}. "
+            "cache_control is inert; every card pays full input price for the whole prompt."
+        )
+
+
+def _pending(rows: pd.DataFrame) -> list[tuple[str, str]]:
+    """Cards with no cache file yet, in a deterministic order."""
     todo = []
     for _, row in rows.iterrows():
         cache_path = STRUCTURED_FIELDS_CACHE_DIR / f"{_safe_filename(row['repo_id'])}.json"
         if cache_path.exists():
             continue
         todo.append((row["repo_id"], row["card_text_clean"]))
-    print(f"{len(todo)} to extract ({len(rows) - len(todo)} already cached)")
-    if not todo:
-        return
+    return sorted(todo)
+
+
+async def _run_extractions_live(todo: list[tuple[str, str]], system: str) -> None:
+    """Concurrent live calls. Full price, but no batch round-trip — use it to top
+    up a handful of stragglers rather than for a full-corpus run."""
+    client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    sem = asyncio.Semaphore(EXTRACT_CONCURRENCY)
 
     async def _do(repo_id, card):
         res = await _extract_one(client, sem, system, repo_id, card)
@@ -186,6 +228,52 @@ async def _run_extractions(rows: pd.DataFrame, system: str) -> None:
     tasks = [_do(rid, c) for rid, c in todo]
     for coro in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc="extracting"):
         await coro
+
+
+def _batch_params(repo_id: str, card: str, system: str):
+    return MessageCreateParamsNonStreaming(
+        model=ANTHROPIC_MODEL_EXTRACT,
+        max_tokens=1024,
+        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": _build_user_message(repo_id, card)}],
+    )
+
+
+def _run_extractions_batch(todo: list[tuple[str, str]], system: str) -> None:
+    """Same requests at half price via the Batches API. Failures are deliberately
+    not written to the cache dir, so re-running the stage retries them."""
+    client = Anthropic(api_key=ANTHROPIC_API_KEY)
+    saved = 0
+    failures: list[str] = []
+
+    for repo_id, card, message, status in run_batches(
+        client,
+        todo,
+        lambda rid, c: _batch_params(rid, c, system),
+        STRUCTURED_FIELDS_BATCH_JOURNAL,
+        label="extract",
+    ):
+        if message is None:
+            failures.append(f"{repo_id} ({status})")
+            continue
+        raw = "".join(b.text for b in message.content if getattr(b, "type", "") == "text")
+        _save_result(
+            {
+                "repo_id": repo_id,
+                "raw_text": raw,
+                "input_tokens": message.usage.input_tokens,
+                "output_tokens": message.usage.output_tokens,
+                "cache_read_input_tokens": getattr(message.usage, "cache_read_input_tokens", 0),
+                "card_was_truncated": len(card) > EXTRACT_CARD_CHAR_LIMIT,
+                "error": None,
+            }
+        )
+        saved += 1
+
+    print(f"Batch extraction: {saved} saved, {len(failures)} failed")
+    if failures:
+        print(f"  first few: {failures[:5]}")
+        print("  re-run this stage to retry them")
 
 
 def _parse_json(raw_text):
@@ -343,6 +431,16 @@ def aggregate(taxonomy, fields) -> pd.DataFrame:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--aggregate-only", action="store_true")
+    parser.add_argument(
+        "--no-batch",
+        action="store_true",
+        help="Use live concurrent calls instead of the Batches API (2x the cost; no wait).",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Only process the first N pending cards. Use it to smoke-test end to end before a full run.",
+    )
     args = parser.parse_args()
 
     STRUCTURED_FIELDS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -359,7 +457,17 @@ def main():
     print(f"Corpus: {len(df)} rows with cards")
 
     if not args.aggregate_only:
-        asyncio.run(_run_extractions(df[["repo_id", "card_text_clean"]], system))
+        todo = _pending(df[["repo_id", "card_text_clean"]])
+        print(f"{len(todo)} to extract ({len(df) - len(todo)} already cached)")
+        if args.limit:
+            todo = todo[: args.limit]
+            print(f"  --limit {args.limit}: processing {len(todo)}")
+        if todo:
+            _report_cache_viability(system)
+            if args.no_batch:
+                asyncio.run(_run_extractions_live(todo, system))
+            else:
+                _run_extractions_batch(todo, system)
 
     aggregate(taxonomy, fields)
 

@@ -22,6 +22,8 @@ python pipeline/04b_summarize_cards.py     # Claude Haiku ≤25-word TL;DRs → 
 python pipeline/05_visualize.py            # DataMapPlot → data/huggingface_dataset_map.html
 ```
 
+Stages 04 and 04b default to the Message Batches API (half price, up to 24h turnaround) and take `--no-batch` for live concurrent calls. They are independent of each other and of 01–03, so both can run alongside the embed→UMAP→label chain once stage 00 lands.
+
 Enumeration is single-stage: `HfApi().list_datasets(sort=..., direction=-1, limit=N, full=True)` already returns ranked, filterable results — no BigQuery-style pre-pass is needed.
 
 ## Required Environment Variables
@@ -47,6 +49,8 @@ datasets.parquet ──> embeddings.npz ──> umap_coords.npz ──> labels.p
 
 `structured_fields.parquet` (stage 04) and `summaries.parquet` (stage 04b) are independently produced from `datasets.parquet` alone (neither depends on embeddings/UMAP/topics, nor on each other). Both are resumable via per-repo JSONs in `data/structured_fields_cache/` and `data/summaries_cache/` respectively.
 
+Both drive the Batches API through `pipeline/batch_runner.py`, which journals submitted batch ids to `data/*_batches.json` **before** it starts polling. An interrupted run therefore drains the batches already in flight on its next invocation instead of resubmitting them and paying twice; batch failures are deliberately not written to the cache dirs, so re-running the stage retries exactly those cards.
+
 `pipeline/config.py` is the central configuration hub: paths, API keys, constants (target count, batch sizes, UMAP params, rank sort key) are all defined there. Every pipeline script imports from it.
 
 Key technology choices:
@@ -54,7 +58,7 @@ Key technology choices:
 - Cohere `embed-v4.0` (512-dim, `input_type="clustering"`) for card embeddings
 - UMAP (n_neighbors=15, min_dist=0.05, cosine) for 512D → 2D
 - Toponymy library for hierarchical density-based clustering with LLM topic naming
-- Claude Sonnet for topic naming inside Toponymy
+- Claude Sonnet 4.6 for topic naming inside Toponymy. Pinned deliberately: Toponymy 0.4.0 calls the Messages API with `temperature=0.4` and reads `response.content[0].text`, so the naming model must accept sampling params and must not lead with a thinking block. Sonnet 5 fails both counts (400 on `temperature`). Moving to Sonnet 5 means upgrading Toponymy or subclassing `AsyncAnthropicNamer`.
 - Claude Haiku for per-card structured-field extraction against a constrained schema (`pipeline/taxonomy.json`)
 - Claude Haiku for per-card ≤25-word TL;DR summaries (hover-card "what is this?" context)
 - DataMapPlot for the final interactive HTML visualization
@@ -84,12 +88,12 @@ Key technology choices:
 
 ## Data Directory
 
-All outputs go to `data/` (gitignored). Key files: `datasets.parquet`, `embeddings.npz`, `umap_coords.npz`, `labels.parquet`, `toponymy_model.joblib`, `structured_fields.parquet`, `structured_fields_cache/`, `summaries.parquet`, `summaries_cache/`, `huggingface_dataset_map.html`. The `*_cache/` directories hold per-repo JSONs and are used for resuming the corresponding LLM stages.
+All outputs go to `data/` (gitignored). Key files: `datasets.parquet`, `embeddings.npz`, `umap_coords.npz`, `labels.parquet`, `toponymy_model.joblib`, `structured_fields.parquet`, `structured_fields_cache/`, `summaries.parquet`, `summaries_cache/`, `huggingface_dataset_map.html`. The `*_cache/` directories hold per-repo JSONs and are used for resuming the corresponding LLM stages. `structured_fields_batches.json` / `summaries_batches.json` are the batch journals — present only while batches are in flight, deleted once drained.
 
 ## Development
 
 Makefile targets: `install`, `lint`, `format`, `test`, `pipeline`, `clean`.
 
-Testing: pytest tests live in `tests/` and cover pure helpers only (no network, no API keys required). `test_fetch_datasets.py` loads the stage-00 module via `importlib.util.spec_from_file_location` because the filename starts with a digit.
+Testing: pytest tests live in `tests/` and cover pure helpers only (no network, no API keys required). `test_batch_runner.py` drives `pipeline/batch_runner.py` against a stub client to pin down the journal/resume behaviour. `test_fetch_datasets.py` loads the stage-00 module via `importlib.util.spec_from_file_location` because the filename starts with a digit.
 
 Pre-commit hooks: ruff check and ruff format run automatically on commit. Install with `pre-commit install`.
